@@ -1,7 +1,7 @@
 """ ZBot training
 
 Run:
-    python examples/locomotion_zbot/zbot_train.py -e zbot-walking --num_envs 2000 
+    python examples/locomotion_zbot/zbot_train.py --num_envs 4096
 """
 
 import argparse
@@ -129,8 +129,8 @@ def get_cfgs():
     }
     command_cfg = {
         "num_commands": 3,
-        "lin_vel_x_range": [-0.3, 0.5],
-        "lin_vel_y_range": [0, 0],
+        "lin_vel_y_range": [0.0, 0.0], # move faster than above!
+        "lin_vel_x_range": [0.1, 0.4],
         "ang_vel_range": [0, 0],
     }
 

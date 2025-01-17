@@ -14,3 +14,12 @@
 # K-Scale Genesis Playground Library
 
 This repository implements training for robotic control policies in Genesis simulator. For more information, see the [documentation](https://docs.kscale.dev/simulation/genesis).
+
+# Resource import
+
+```bash
+kscale robots urdf download zbot-v2
+kscale robots urdf download kbot-v2
+```
+
+You can import the resources for different robots 

@@ -1,4 +1,4 @@
-f""" ZBot environment """
+""" KBot Environment """
 import torch
 import math
 import genesis as gs
@@ -9,7 +9,7 @@ def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
 
-class ZbotEnv:
+class KbotEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="mps"):
         self.device = torch.device(device)
 
@@ -38,7 +38,7 @@ class ZbotEnv:
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
-                camera_fov=80,
+                camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(n_rendered_envs=1),
             rigid_options=gs.options.RigidOptions(
@@ -59,7 +59,7 @@ class ZbotEnv:
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="examples/resources/zbot/robot_fixed.urdf",
+                file="genesis_playground/resources/kbot/robot_fixed.urdf",
                 pos=self.base_init_pos.cpu().numpy(),
                 quat=self.base_init_quat.cpu().numpy(),
             ),
@@ -252,6 +252,18 @@ class ZbotEnv:
         # Penalize changes in actions
         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
 
+    def _reward_gait_symmetry(self):
+        # Reward symmetric gait patterns
+        left_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("L_hip_y")]
+        right_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("R_hip_y")]
+        left_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("L_knee")]
+        right_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("R_knee")]
+        
+        hip_symmetry = torch.abs(left_hip - right_hip)
+        knee_symmetry = torch.abs(left_knee - right_knee)
+        
+        return torch.exp(-(hip_symmetry + knee_symmetry))
+
     def _reward_similar_to_default(self):
         # Penalize joint poses far away from default pose
         return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
@@ -259,19 +271,3 @@ class ZbotEnv:
     def _reward_base_height(self):
         # Penalize base height away from target
         return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
-
-    def _reward_gait_symmetry(self):
-        # Reward symmetric gait patterns
-        left_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("Left_Hip_Pitch")]
-        right_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("Right_Hip_Pitch")]
-        left_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("Left_Knee_Pitch")]
-        right_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("Right_Knee_Pitch")]
-        
-        hip_symmetry = torch.abs(left_hip - right_hip)
-        knee_symmetry = torch.abs(left_knee - right_knee)
-        
-        return torch.exp(-(hip_symmetry + knee_symmetry))
-
-    def _reward_energy_efficiency(self):
-        # Reward energy efficiency by penalizing high joint velocities
-        return -torch.sum(torch.square(self.dof_vel), dim=1)
