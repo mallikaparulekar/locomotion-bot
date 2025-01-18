@@ -1,7 +1,7 @@
 """ ZBot evaluation
 
 Run:
-    python examples/locomotion_zbot/zbot_eval.py -e zbot-walking --show_viewer True --num_envs 1 --device mps
+    python genesis_playground/zbot/zbot_eval.py -e zbot-walking --show_viewer True --num_envs 1 --device mps
 """
 import argparse
 import os

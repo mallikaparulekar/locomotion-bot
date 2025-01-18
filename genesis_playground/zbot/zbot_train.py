@@ -1,7 +1,7 @@
 """ ZBot training
 
 Run:
-    python examples/locomotion_zbot/zbot_train.py --num_envs 4096
+    python genesis_playground/zbot/zbot_train.py --num_envs 4096
 """
 
 import argparse

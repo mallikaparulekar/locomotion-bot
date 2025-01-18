@@ -8,7 +8,6 @@
 [![black](https://img.shields.io/badge/Code%20Style-Black-black.svg?labelColor=gray)](https://black.readthedocs.io/en/stable/)
 [![ruff](https://img.shields.io/badge/Linter-Ruff-red.svg?labelColor=gray)](https://github.com/charliermarsh/ruff)
 <br />
-
 </div>
 
 # K-Scale Genesis Playground Library
@@ -21,5 +20,3 @@ This repository implements training for robotic control policies in Genesis simu
 kscale robots urdf download zbot-v2
 kscale robots urdf download kbot-v2
 ```
-
-You can import the resources for different robots 

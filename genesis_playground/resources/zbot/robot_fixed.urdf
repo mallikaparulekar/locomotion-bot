@@ -22,7 +22,7 @@ with default config example.
         <mesh filename="meshes/Z-BOT2_MASTER-BODY-SKELETON.stl" />
       </geometry>
       <material name="Z-BOT2_MASTER-BODY-SKELETON_material">
-        <color rgba="0.49411765 0.62352941 0.74901961 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -51,7 +51,7 @@ with default config example.
         <mesh filename="meshes/Z-BOT2-MASTER-SHOULDER2.stl" />
       </geometry>
       <material name="Z-BOT2-MASTER-SHOULDER2_material">
-        <color rgba="0.36470588 0.36078431 0.74901961 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -80,7 +80,7 @@ with default config example.
         <mesh filename="meshes/Z-BOT2-MASTER-SHOULDER2_2.stl" />
       </geometry>
       <material name="Z-BOT2-MASTER-SHOULDER2_material_2">
-        <color rgba="0.36470588 0.36078431 0.74901961 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -109,7 +109,7 @@ with default config example.
         <mesh filename="meshes/U-HIP-L.stl" />
       </geometry>
       <material name="U-HIP-L_material">
-        <color rgba="0.76862745 0.88627451 0.95294118 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -138,7 +138,7 @@ with default config example.
         <mesh filename="meshes/U-HIP-R.stl" />
       </geometry>
       <material name="U-HIP-R_material">
-        <color rgba="0.76862745 0.88627451 0.95294118 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -167,7 +167,7 @@ with default config example.
         <mesh filename="meshes/3215_1Flange.stl" />
       </geometry>
       <material name="3215_1Flange_material">
-        <color rgba="0.74901961 0.49803922 0.7254902 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -196,7 +196,7 @@ with default config example.
         <mesh filename="meshes/3215_1Flange_2.stl" />
       </geometry>
       <material name="3215_1Flange_material_2">
-        <color rgba="0.74901961 0.49803922 0.7254902 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -225,7 +225,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange.stl" />
       </geometry>
       <material name="3215_BothFlange_material">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -254,7 +254,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange_2.stl" />
       </geometry>
       <material name="3215_BothFlange_material_2">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -283,7 +283,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange_3.stl" />
       </geometry>
       <material name="3215_BothFlange_material_3">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -312,7 +312,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange_4.stl" />
       </geometry>
       <material name="3215_BothFlange_material_4">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -341,7 +341,7 @@ with default config example.
         <mesh filename="meshes/R-ARM-MIRROR-1.stl" />
       </geometry>
       <material name="R-ARM-MIRROR-1_material">
-        <color rgba="0.64705882 0.64705882 0.64705882 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -370,7 +370,7 @@ with default config example.
         <mesh filename="meshes/L-ARM-MIRROR_1.stl" />
       </geometry>
       <material name="L-ARM-MIRROR_1_material">
-        <color rgba="0.62745098 0.62745098 0.62745098 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -399,7 +399,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange_5.stl" />
       </geometry>
       <material name="3215_BothFlange_material_5">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -428,7 +428,7 @@ with default config example.
         <mesh filename="meshes/3215_BothFlange_6.stl" />
       </geometry>
       <material name="3215_BothFlange_material_6">
-        <color rgba="1 0 0 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -457,7 +457,7 @@ with default config example.
         <mesh filename="meshes/FINGER_1.stl" />
       </geometry>
       <material name="FINGER_1_material">
-        <color rgba="0.62745098 0.62745098 0.62745098 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -486,7 +486,7 @@ with default config example.
         <mesh filename="meshes/FINGER_1_2.stl" />
       </geometry>
       <material name="FINGER_1_material_2">
-        <color rgba="0.62745098 0.62745098 0.62745098 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -515,7 +515,7 @@ with default config example.
         <mesh filename="meshes/FOOT.stl" />
       </geometry>
       <material name="FOOT_material">
-        <color rgba="0.62745098 0.62745098 0.62745098 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
@@ -544,7 +544,7 @@ with default config example.
         <mesh filename="meshes/FOOT_2.stl" />
       </geometry>
       <material name="FOOT_material_2">
-        <color rgba="0.62745098 0.62745098 0.62745098 1" />
+        <color rgba="0.95 0.93 0.88 1" />
       </material>
     </visual>
     <collision>
