@@ -1,6 +1,7 @@
 """ ZBot environment """
 import torch
 import math
+import numpy as np
 import genesis as gs
 from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
 
@@ -51,7 +52,7 @@ class ZbotEnv:
         )
 
         # add plain
-        self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
+        self.plane = self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
         # add robot
         self.base_init_pos = torch.tensor(self.env_cfg["base_init_pos"], device=self.device)
@@ -64,7 +65,7 @@ class ZbotEnv:
                 quat=self.base_init_quat.cpu().numpy(),
             ),
         )
-
+        
         # build
         self.scene.build(n_envs=num_envs)
 
@@ -72,8 +73,10 @@ class ZbotEnv:
         self.motor_dofs = [self.robot.get_joint(name).dof_idx_local for name in self.env_cfg["dof_names"]]
 
         # PD control parameters
-        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs)
-        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs)
+        kp_values = [self.env_cfg["kp"]] * self.num_actions
+        kv_values = [self.env_cfg["kd"]] * self.num_actions
+        self.robot.set_dofs_kp(kp_values, self.motor_dofs)
+        self.robot.set_dofs_kv(kv_values, self.motor_dofs)
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -189,27 +192,27 @@ class ZbotEnv:
         self.feet_air_time[foot_contact] = 0.0
 
         # =========== stride distance ===========
-        # Update the "in_contact_last" state
-        self.feet_in_contact_last = foot_contact.clone()
+        # # Update the "in_contact_last" state
+        # self.feet_in_contact_last = foot_contact.clone()
 
-        first_contact_mask = foot_contact & ~self.feet_in_contact_last
+        # first_contact_mask = foot_contact & ~self.feet_in_contact_last
 
-        # Current foot positions [num_envs, n_links, 3], slice the relevant foot link indices.
-        all_links_pos = self.robot.get_links_pos()       # shape (num_envs, n_links, 3)
-        current_foot_pos = all_links_pos[:, self.foot_link_indices, :]  # shape (num_envs, n_feet, 3)
+        # # Current foot positions [num_envs, n_links, 3], slice the relevant foot link indices.
+        # all_links_pos = self.robot.get_links_pos()       # shape (num_envs, n_links, 3)
+        # current_foot_pos = all_links_pos[:, self.foot_link_indices, :]  # shape (num_envs, n_feet, 3)
 
-        # Compute the Euclidean distance traveled by each foot since last ground contact.
-        distances = torch.norm(current_foot_pos - self.last_foot_contact_pos, dim=-1) # (num_envs, n_feet)
+        # # Compute the Euclidean distance traveled by each foot since last ground contact.
+        # distances = torch.norm(current_foot_pos - self.last_foot_contact_pos, dim=-1) # (num_envs, n_feet)
 
-        # Sum the distance only on the step that foot re-contacts the ground.
-        step_distance = (distances * first_contact_mask.float()).sum(dim=1)
+        # # Sum the distance only on the step that foot re-contacts the ground.
+        # step_distance = (distances * first_contact_mask.float()).sum(dim=1)
 
-        # Store into our buffer for the reward function to pick up.
-        self.foot_step_distance[:] = step_distance
+        # # Store into our buffer for the reward function to pick up.
+        # self.foot_step_distance[:] = step_distance
 
-        # Update last_foot_contact_pos for feet that just hit the ground.
-        foot_mask_expanded = first_contact_mask.unsqueeze(-1).expand(-1, -1, 3)
-        self.last_foot_contact_pos = torch.where(foot_mask_expanded, current_foot_pos, self.last_foot_contact_pos)
+        # # Update last_foot_contact_pos for feet that just hit the ground.
+        # foot_mask_expanded = first_contact_mask.unsqueeze(-1).expand(-1, -1, 3)
+        # self.last_foot_contact_pos = torch.where(foot_mask_expanded, current_foot_pos, self.last_foot_contact_pos)
 
         # ===========
         self.base_pos[:] = self.robot.get_pos()
@@ -277,11 +280,47 @@ class ZbotEnv:
     def reset_idx(self, envs_idx):
         if len(envs_idx) == 0:
             return
-        kp_min, kp_max = self.env_cfg["kp_delta"] - self.env_cfg["kp"], self.env_cfg["kp_delta"] + self.env_cfg["kp"]
-        kv_min, kv_max = self.env_cfg["kd_delta"] - self.env_cfg["kd"], self.env_cfg["kd_delta"] + self.env_cfg["kd"]
+        # Sample uniform multipliers between min and max
+        kp_mult = gs_rand_float(
+            self.env_cfg["kp_multipliers"][0],
+            self.env_cfg["kp_multipliers"][1],
+            (1,),
+            self.device
+        )
+        kd_mult = gs_rand_float(
+            self.env_cfg["kd_multipliers"][0], 
+            self.env_cfg["kd_multipliers"][1],
+            (1,),
+            self.device
+        )
 
-        self.robot.set_dofs_kp(kp_min + torch.rand(len(envs_idx)) * (kp_max - kp_min), self.motor_dofs, envs_idx=envs_idx)
-        self.robot.set_dofs_kv(kv_min + torch.rand(len(envs_idx)) * (kv_max - kv_min), self.motor_dofs, envs_idx=envs_idx)
+        # Apply multipliers to default values
+        kp_values = torch.full(
+            (self.num_actions,),
+            self.env_cfg["kp"] * kp_mult.item(),
+            device=self.device
+        )
+        kd_values = torch.full(
+            (self.num_actions,),
+            self.env_cfg["kd"] * kd_mult.item(), 
+            device=self.device
+        )
+
+        # Set the PD gains
+        self.robot.set_dofs_kp(kp_values, self.motor_dofs)
+        self.robot.set_dofs_kv(kd_values, self.motor_dofs)
+        
+        # friction
+        friction_range = self.env_cfg["friction_range"]
+        friction = np.random.uniform(friction_range[0], friction_range[1])
+        self.robot.set_friction(friction)
+        self.plane.set_friction(friction)
+        
+        # link mass
+        link_mass_mult = gs_rand_float(self.env_cfg["link_mass_multipliers"][0], self.env_cfg["link_mass_multipliers"][1], (1,), self.device)
+        breakpoint()
+        for link in self.robot.get_links():
+            link.set_mass(link.get_mass() * link_mass_mult.item())
 
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
@@ -373,7 +412,7 @@ class ZbotEnv:
         the reward is gained on first contact.
         """
         threshold_min = 0.01
-        threshold_max = 1.0
+        threshold_max = 0.5
 
         # If you want to scale by command, you can measure how big the XY or yaw command is:
         cmd_norm = torch.linalg.norm(self.commands, dim=1)
