@@ -83,6 +83,24 @@ class ZbotEnv:
             self.episode_sums[name] = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
 
         # initialize buffers
+        
+        # ==== feet air time ====
+        # self.foot_link_names = ["FOOT", "FOOT_2"]
+        # # breakpoint()
+        # self.foot_link_indices = [
+        #     10, 11
+        # ]
+
+        # # Create buffers to track how long each foot has been in the air.
+        # # Shape: [num_envs, num_feet].
+        # self.feet_air_time = torch.zeros((self.num_envs, len(self.foot_link_indices)),
+        #                                  device=self.device, dtype=torch.float)
+        # # Track whether each foot was in contact last step to help detect "first contact."
+        # self.feet_in_contact_last = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
+        
+        
+        # ========
+        
         self.base_lin_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.base_ang_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.projected_gravity = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
@@ -127,6 +145,49 @@ class ZbotEnv:
 
         # update buffers
         self.episode_length_buf += 1
+        
+        
+        # ==== foot contacts ====
+        # contacts = self.robot.get_contacts()
+        # # -----------------------------------------------------------
+        # # 1) Determine foot contacts for each environment.
+        # # -----------------------------------------------------------
+        # # foot_contact[e, f] = True if foot f in env e is on the floor.
+        # foot_contact = torch.zeros(
+        #     (self.num_envs, len(self.foot_link_indices)),
+        #     device=self.device,
+        #     dtype=torch.bool
+        # )
+        
+        # plane_link_index = 0
+        
+        # # For each env, read the link data from the contact dictionary:
+        # link_a = contacts["link_a"]  # shape [num_envs, num_contacts]
+        # link_b = contacts["link_b"]  # shape [num_envs, num_contacts]
+        
+        # for i_env in range(self.num_envs):
+        #     for i_contact in range(link_a.shape[1]):
+        #         la = link_a[i_env, i_contact].item()
+        #         lb = link_b[i_env, i_contact].item()
+        #         # Check if la or lb is in foot_link_indices, and the other is plane_link_index
+        #         for f_idx, foot_li in enumerate(self.foot_link_indices):
+        #             if (la == foot_li and lb == plane_link_index) or (lb == foot_li and la == plane_link_index):
+        #                 foot_contact[i_env, f_idx] = True
+                        
+        # not_in_contact = ~foot_contact
+        # breakpoint()
+        # self.feet_air_time += (not_in_contact * self.dt)
+
+        # # For “first contact,” we check foot_contact & ~self.feet_in_contact_last.
+        # # first_contact = foot_contact & ~self.feet_in_contact_last
+
+        # # Reset air time to 0 if foot is currently in contact
+        # self.feet_air_time[foot_contact] = 0.0
+
+        # # Update the "in_contact_last" state
+        # self.feet_in_contact_last = foot_contact.clone()
+        # ======================
+        
         self.base_pos[:] = self.robot.get_pos()
         self.base_quat[:] = self.robot.get_quat()
         self.base_euler = quat_to_xyz(
@@ -275,3 +336,44 @@ class ZbotEnv:
     def _reward_energy_efficiency(self):
         # Reward energy efficiency by penalizing high joint velocities
         return -torch.sum(torch.square(self.dof_vel), dim=1)
+    
+    def _reward_feet_air_time(self):
+        """
+        Mirrors logic from joystick.py: reward for how long each foot is in the air.
+        We apply a threshold window [threshold_min, threshold_max], then
+        the reward is gained on first contact.
+        """
+        threshold_min = 0.2
+        threshold_max = 0.5
+
+        # If you want to scale by command, you can measure how big the XY or yaw command is:
+        cmd_norm = torch.linalg.norm(self.commands, dim=1)
+
+        # “first_contact” can be recognized as feet_in_contact_last = false => true?
+        # We already computed that each step in step(...). If we want the “first_contact” mask for the reward:
+        # For convenience, re-derive it here or pass from step:
+        #    first_contact_mask = foot_contact & ~self.feet_in_contact_last
+        # but we can store it in a buffer if desired. 
+        # For an example, just define it below. We'll do a local approach:
+        # (But step() above already has a "first_contact" variable. 
+        #  If we want to reuse it, store in self.some_buffer each step.)
+
+        # We'll pretend we store it in self._first_contact each step for each foot:
+        # shape [num_envs, num_feet], boolean
+        first_contact_mask = (self.feet_air_time == 0.0) & (~self.feet_in_contact_last)
+
+        # Weighted “air times” only on first contact
+        # (feet_air_time - threshold_min) but clipped at threshold_max - threshold_min
+        clipped = (self.feet_air_time - threshold_min).clamp(min=0.0, max=threshold_max - threshold_min)
+        # sum across feet
+        reward = clipped.sum(dim=1)
+
+        # Zero out if command is near zero (like in joystick)
+        zero_mask = (cmd_norm <= 0.1)
+        reward[zero_mask] = 0.0
+
+        # Also multiply by "first_contact_mask" if you only want reward on the step of contact.
+        # If you prefer a continuous measure, you can omit this. Example:
+        reward = reward * first_contact_mask.any(dim=1).float()
+
+        return reward

@@ -127,6 +127,7 @@ def get_cfgs():
             "base_height": -50.0,
             "action_rate": -0.005,
             "similar_to_default": -0.1,
+            # "feet_air_time": 0.05
         },
     }
     command_cfg = {
