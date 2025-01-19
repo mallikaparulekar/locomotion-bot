@@ -56,7 +56,7 @@ def get_train_cfg(exp_name, max_iterations):
             "resume_path": None,
             "run_name": "",
             "runner_class_name": "OnPolicyRunner",
-            "save_interval": 100,
+            "save_interval": 10,
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
@@ -69,6 +69,7 @@ def get_cfgs():
     env_cfg = {
         "num_actions": 10,
         # joint/link names
+        # NOTE: hip roll/yaw adn flipped between sim & real robot FIXME
         "default_joint_angles": {  # [rad]
             "R_Hip_Pitch": 0.0,
             "L_Hip_Pitch": 0.0,
@@ -95,13 +96,14 @@ def get_cfgs():
         ],
         # friction
         "env_friction_range": {
-            "start": [1.0, 1.0],
+            "start": [0.9, 1.1],
             "end": [0.9, 1.1],
         },
         # link mass
+        # touching this is bad
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
-            "end": [0.9, 1.1],
+            "end": [1.0, 1.0],
         },
         # RFI
         "rfi_scale": 0.1,
@@ -144,15 +146,14 @@ def get_cfgs():
             "action_rate": -0.005,
             "similar_to_default": -0.1,
             "feet_air_time": 5.0,
-            ""
             # "foot_step_distance": 1.0,
         },
     }
     command_cfg = {
         "num_commands": 3,
         "lin_vel_y_range": [0.0, 0.0], # move faster than above!
-        "lin_vel_x_range": [0.1, 0.4],
-        "ang_vel_range": [0, 0],
+        "lin_vel_x_range": [-0.2, 0.4],
+        "ang_vel_range": [-0.4, 0.4],
     }
 
     return env_cfg, obs_cfg, reward_cfg, command_cfg

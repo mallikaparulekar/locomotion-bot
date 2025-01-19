@@ -82,6 +82,9 @@ def keyboard_control_policy(obs: torch.Tensor) -> torch.Tensor:
 
     return obs
 
+def deg2rad(deg):
+    return deg * np.pi / 180
+
 def run_sim(env, policy, obs, use_keyboard=False):
     """
     Runs the simulation loop for a fixed timespan.
@@ -102,6 +105,20 @@ def run_sim(env, policy, obs, use_keyboard=False):
         
         print(obs[:, 6:9])
         actions = policy(obs)
+        
+        actions = 4 * torch.tensor([
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(0), 
+            deg2rad(20)]).reshape(1, 10).to(env.device)
+        
+        print(actions)
 
         obs, _, rews, dones, infos = env.step(actions)
         timesteps += 1

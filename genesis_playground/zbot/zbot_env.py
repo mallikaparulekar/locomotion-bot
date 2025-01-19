@@ -12,20 +12,23 @@ def gs_rand_float(lower, upper, shape, device):
 def cosine_interpolation(start, end, t, max_t):
     return start + (end - start) * (1 - math.cos(t * math.pi / max_t)) / 2
 
+def linear_interpolation(start, end, t, max_t):
+    return start + (end - start) * (t / max_t)
+
 def get_from_curriculum(curriculum, t, max_t):
     min_start = curriculum["start"][0]
     min_end = curriculum["end"][0]
     max_start = curriculum["start"][1]
     max_end = curriculum["end"][1]
-    min_value = cosine_interpolation(min_start, min_end, t, max_t)
-    max_value = cosine_interpolation(max_start, max_end, t, max_t)
+    min_value = linear_interpolation(min_start, min_end, t, max_t)
+    max_value = linear_interpolation(max_start, max_end, t, max_t)
     return np.random.uniform(min_value, max_value)
 
 class ZbotEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="mps"):
         self.device = torch.device(device)
         self.total_steps = 0
-        self.max_steps = 80_000_000
+        self.max_steps = 40_000_000
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -259,13 +262,13 @@ class ZbotEnv:
 
         # check termination and reset
         self.reset_buf = self.episode_length_buf > self.max_episode_length
-        self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
-        self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
+        # self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
+        # self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
 
-        time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
-        self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
-        self.extras["time_outs"][time_out_idx] = 1.0
-
+        # time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
+        # self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
+        # self.extras["time_outs"][time_out_idx] = 1.0
+#######################
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
         # compute reward
