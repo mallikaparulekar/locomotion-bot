@@ -1,7 +1,8 @@
 """ ZBot training
 
 Run:
-    python genesis_playground/zbot/zbot_train.py --num_envs 4096
+    python genesis_playground/zbot/zbot_train.py --num_envs 4096 --max_iterations 200 --device mps 
+    (or cuda)
 """
 
 import argparse
@@ -93,9 +94,17 @@ def get_cfgs():
             "L_Ankle_Pitch",
         ],
         # friction
-        "friction_range": [0.2, 1.1],
+        "env_friction_range": {
+            "start": [1.0, 1.0],
+            "end": [0.9, 1.1],
+        },
         # link mass
-        "link_mass_multipliers": [0.7, 1.3],
+        "link_mass_multipliers": {
+            "start": [1.0, 1.0],
+            "end": [0.9, 1.1],
+        },
+        # RFI
+        "rfi_scale": 0.1,
         # PD
         "kp": 20.0,
         "kd": 0.5,
@@ -112,6 +121,7 @@ def get_cfgs():
         "action_scale": 0.25,
         "simulate_action_latency": True,
         "clip_actions": 100.0,
+        "max_torque": 10.0,
     }
     obs_cfg = {
         "num_obs": 39,
@@ -134,6 +144,7 @@ def get_cfgs():
             "action_rate": -0.005,
             "similar_to_default": -0.1,
             "feet_air_time": 5.0,
+            ""
             # "foot_step_distance": 1.0,
         },
     }
@@ -160,12 +171,11 @@ class WandbOnPolicyRunner(OnPolicyRunner):
         }
         wandb.log(metrics)
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking")
     parser.add_argument("-B", "--num_envs", type=int, default=10)
-    parser.add_argument("--max_iterations", type=int, default=3000)
+    parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--device", type=str, default="mps")
     parser.add_argument("--show_viewer", type=bool, default=False)
     parser.add_argument("--wandb_entity", type=str, default=None)

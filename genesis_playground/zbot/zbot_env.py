@@ -9,10 +9,23 @@ from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transfo
 def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
+def cosine_interpolation(start, end, t, max_t):
+    return start + (end - start) * (1 - math.cos(t * math.pi / max_t)) / 2
+
+def get_from_curriculum(curriculum, t, max_t):
+    min_start = curriculum["start"][0]
+    min_end = curriculum["end"][0]
+    max_start = curriculum["start"][1]
+    max_end = curriculum["end"][1]
+    min_value = cosine_interpolation(min_start, min_end, t, max_t)
+    max_value = cosine_interpolation(max_start, max_end, t, max_t)
+    return np.random.uniform(min_value, max_value)
 
 class ZbotEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="mps"):
         self.device = torch.device(device)
+        self.total_steps = 0
+        self.max_steps = 80_000_000
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -21,7 +34,7 @@ class ZbotEnv:
         self.num_commands = command_cfg["num_commands"]
 
         self.simulate_action_latency = True  # there is a 1 step latency on real robot
-        self.dt = 0.02  # control frequence on real robot is 50hz
+        self.dt = 0.033 #0.02  # control frequence on real robot is 50hz
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt)
 
         self.env_cfg = env_cfg
@@ -34,7 +47,7 @@ class ZbotEnv:
 
         # create scene
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
+            sim_options=gs.options.SimOptions(dt=self.dt, substeps=3), # substep=2 for 50hz
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
@@ -154,6 +167,15 @@ class ZbotEnv:
         exec_actions = self.last_actions if self.simulate_action_latency else self.actions
         target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
+
+        # get torques
+        torques = self.robot.get_dofs_control_force(self.motor_dofs)
+        max_torque = self.env_cfg["max_torque"]
+        # RFI https://arxiv.org/pdf/2209.12878
+        noise = (2.0 * torch.rand_like(torques) - 1.0) * self.env_cfg["rfi_scale"]
+        torques = torques + noise
+        torques = torch.clamp(torques, -max_torque, max_torque)
+        self.robot.control_dofs_force(torques, self.motor_dofs)
         self.scene.step()
 
         # update buffers
@@ -191,7 +213,7 @@ class ZbotEnv:
         # Reset air time to 0 if foot is currently in contact
         self.feet_air_time[foot_contact] = 0.0
 
-        # =========== stride distance ===========
+        # =========== stride distance [borken] ===========
         # # Update the "in_contact_last" state
         # self.feet_in_contact_last = foot_contact.clone()
 
@@ -268,6 +290,7 @@ class ZbotEnv:
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
+        self.total_steps += self.num_envs
 
         return self.obs_buf, None, self.rew_buf, self.reset_buf, self.extras
 
@@ -311,16 +334,14 @@ class ZbotEnv:
         self.robot.set_dofs_kv(kd_values, self.motor_dofs)
         
         # friction
-        friction_range = self.env_cfg["friction_range"]
-        friction = np.random.uniform(friction_range[0], friction_range[1])
+        friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
         self.robot.set_friction(friction)
         self.plane.set_friction(friction)
         
         # link mass
-        link_mass_mult = gs_rand_float(self.env_cfg["link_mass_multipliers"][0], self.env_cfg["link_mass_multipliers"][1], (1,), self.device)
-        breakpoint()
-        for link in self.robot.get_links():
-            link.set_mass(link.get_mass() * link_mass_mult.item())
+        link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
+        for link in self.robot.links:
+            link.set_mass(link.get_mass() * link_mass_mult)
 
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
@@ -359,7 +380,12 @@ class ZbotEnv:
 
     def reset(self):
         self.reset_buf[:] = True
-        self.reset_idx(torch.arange(self.num_envs, device=self.device))
+        # Reset environments in chunks of 32 for better efficiency
+        chunk_size = 32
+        for i in range(0, self.num_envs, chunk_size):
+            chunk_end = min(i + chunk_size, self.num_envs)
+            chunk_indices = torch.arange(i, chunk_end, device=self.device)
+            self.reset_idx(chunk_indices)
         return self.obs_buf, None
 
     # ------------ reward functions----------------
