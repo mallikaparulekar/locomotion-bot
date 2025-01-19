@@ -129,7 +129,7 @@ def get_cfgs():
             "base_height": -50.0,
             "action_rate": -0.005,
             "similar_to_default": -0.1,
-            "feet_air_time": 5.0,
+            "feet_air_time": 10.0,
             "foot_step_distance": 1.0,
         },
     }
@@ -166,6 +166,7 @@ def main():
     parser.add_argument("--show_viewer", type=bool, default=False)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--use_wandb", type=bool, default=False)
+    parser.add_argument("--from_checkpoint", type=bool, default=False)
     args = parser.parse_args()
     
     gs.init(logging_level="warning")
@@ -174,9 +175,10 @@ def main():
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
     train_cfg = get_train_cfg(args.exp_name, args.max_iterations)
 
-    if os.path.exists(log_dir):
-        shutil.rmtree(log_dir)
-    os.makedirs(log_dir, exist_ok=True)
+    if not args.from_checkpoint:
+        if os.path.exists(log_dir):
+            shutil.rmtree(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
 
     env = ZbotEnv(
         num_envs=args.num_envs, 

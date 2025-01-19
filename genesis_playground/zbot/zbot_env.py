@@ -81,7 +81,6 @@ class ZbotEnv:
             self.reward_scales[name] *= self.dt
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
-
         # initialize buffers
         
         # ==== feet air time ====
@@ -374,7 +373,7 @@ class ZbotEnv:
         the reward is gained on first contact.
         """
         threshold_min = 0.01
-        threshold_max = 0.25
+        threshold_max = 1.0
 
         # If you want to scale by command, you can measure how big the XY or yaw command is:
         cmd_norm = torch.linalg.norm(self.commands, dim=1)
@@ -382,6 +381,7 @@ class ZbotEnv:
         # Weighted “air times” only on first contact
         # (feet_air_time - threshold_min) but clipped at threshold_max - threshold_min
         clipped = (self.feet_air_time - threshold_min).clamp(min=0.0, max=threshold_max - threshold_min)
+
         # sum across feet
         reward = clipped.sum(dim=1)
 
