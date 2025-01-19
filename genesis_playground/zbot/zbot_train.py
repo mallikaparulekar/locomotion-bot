@@ -95,6 +95,8 @@ def get_cfgs():
         # PD
         "kp": 20.0,
         "kd": 0.5,
+        "kp_delta": 3.0,
+        "kd_delta": 0.2,
         # termination
         "termination_if_roll_greater_than": 10,  # degree
         "termination_if_pitch_greater_than": 10,
@@ -127,7 +129,8 @@ def get_cfgs():
             "base_height": -50.0,
             "action_rate": -0.005,
             "similar_to_default": -0.1,
-            # "feet_air_time": 0.05
+            "feet_air_time": 5.0,
+            "foot_step_distance": 1.0,
         },
     }
     command_cfg = {

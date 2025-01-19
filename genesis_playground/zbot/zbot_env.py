@@ -85,20 +85,31 @@ class ZbotEnv:
         # initialize buffers
         
         # ==== feet air time ====
-        # self.foot_link_names = ["FOOT", "FOOT_2"]
-        # # breakpoint()
-        # self.foot_link_indices = [
-        #     10, 11
-        # ]
+        self.foot_link_names = ["FOOT", "FOOT_2"]
+        self.foot_link_indices = [
+            10, 11
+        ]
 
-        # # Create buffers to track how long each foot has been in the air.
-        # # Shape: [num_envs, num_feet].
-        # self.feet_air_time = torch.zeros((self.num_envs, len(self.foot_link_indices)),
-        #                                  device=self.device, dtype=torch.float)
-        # # Track whether each foot was in contact last step to help detect "first contact."
-        # self.feet_in_contact_last = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
+        # Create buffers to track how long each foot has been in the air.
+        # Shape: [num_envs, num_feet].
+        self.feet_air_time = torch.zeros((self.num_envs, len(self.foot_link_indices)),
+                                         device=self.device, dtype=torch.float)
+        # Track whether each foot was in contact last step to help detect "first contact."
+        self.feet_in_contact_last = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
         
         
+        # ===== feet step distance ====
+        self.last_foot_contact_pos = torch.zeros(
+            (self.num_envs, len(self.foot_link_indices), 3),
+            device=self.device,
+            dtype=gs.tc_float
+        )
+        # We'll store the most recent "step distance" for each environment:
+        self.foot_step_distance = torch.zeros(
+            (self.num_envs,),
+            device=self.device,
+            dtype=gs.tc_float
+        )
         # ========
         
         self.base_lin_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
@@ -148,46 +159,60 @@ class ZbotEnv:
         
         
         # ==== foot contacts ====
-        # contacts = self.robot.get_contacts()
-        # # -----------------------------------------------------------
-        # # 1) Determine foot contacts for each environment.
-        # # -----------------------------------------------------------
-        # # foot_contact[e, f] = True if foot f in env e is on the floor.
-        # foot_contact = torch.zeros(
-        #     (self.num_envs, len(self.foot_link_indices)),
-        #     device=self.device,
-        #     dtype=torch.bool
-        # )
+        contacts = self.robot.get_contacts()
+        # -----------------------------------------------------------
+        # 1) Determine foot contacts for each environment.
+        # -----------------------------------------------------------
+        # foot_contact[e, f] = True if foot f in env e is on the floor.
+        foot_contact = torch.zeros(
+            (self.num_envs, len(self.foot_link_indices)),
+            device=self.device,
+            dtype=torch.bool
+        )
         
-        # plane_link_index = 0
+        plane_link_index = 0
         
-        # # For each env, read the link data from the contact dictionary:
-        # link_a = contacts["link_a"]  # shape [num_envs, num_contacts]
-        # link_b = contacts["link_b"]  # shape [num_envs, num_contacts]
+        # For each env, read the link data from the contact dictionary:
+        link_a = contacts["link_a"]  # shape [num_envs, num_contacts]
+        link_b = contacts["link_b"]  # shape [num_envs, num_contacts]
         
-        # for i_env in range(self.num_envs):
-        #     for i_contact in range(link_a.shape[1]):
-        #         la = link_a[i_env, i_contact].item()
-        #         lb = link_b[i_env, i_contact].item()
-        #         # Check if la or lb is in foot_link_indices, and the other is plane_link_index
-        #         for f_idx, foot_li in enumerate(self.foot_link_indices):
-        #             if (la == foot_li and lb == plane_link_index) or (lb == foot_li and la == plane_link_index):
-        #                 foot_contact[i_env, f_idx] = True
+        # Create a mask for each foot link index
+        for f_idx, foot_li in enumerate(self.foot_link_indices):
+            # Check if either link_a or link_b matches foot_li and the other matches plane_link_index
+            foot_plane_contact = ((link_a == foot_li) & (link_b == plane_link_index)) | ((link_b == foot_li) & (link_a == plane_link_index))
+            # Any contact along the contact dimension means that foot is in contact
+            foot_contact[:, f_idx] = torch.tensor(foot_plane_contact.any(1))
                         
-        # not_in_contact = ~foot_contact
-        # breakpoint()
-        # self.feet_air_time += (not_in_contact * self.dt)
+        not_in_contact = ~foot_contact
+        self.feet_air_time += (not_in_contact * self.dt)
 
-        # # For “first contact,” we check foot_contact & ~self.feet_in_contact_last.
-        # # first_contact = foot_contact & ~self.feet_in_contact_last
+        # Reset air time to 0 if foot is currently in contact
+        self.feet_air_time[foot_contact] = 0.0
 
-        # # Reset air time to 0 if foot is currently in contact
-        # self.feet_air_time[foot_contact] = 0.0
+        # =========== stride distance ===========
+        # Update the "in_contact_last" state
+        self.feet_in_contact_last = foot_contact.clone()
 
-        # # Update the "in_contact_last" state
-        # self.feet_in_contact_last = foot_contact.clone()
-        # ======================
-        
+        first_contact_mask = foot_contact & ~self.feet_in_contact_last
+
+        # Current foot positions [num_envs, n_links, 3], slice the relevant foot link indices.
+        all_links_pos = self.robot.get_links_pos()       # shape (num_envs, n_links, 3)
+        current_foot_pos = all_links_pos[:, self.foot_link_indices, :]  # shape (num_envs, n_feet, 3)
+
+        # Compute the Euclidean distance traveled by each foot since last ground contact.
+        distances = torch.norm(current_foot_pos - self.last_foot_contact_pos, dim=-1) # (num_envs, n_feet)
+
+        # Sum the distance only on the step that foot re-contacts the ground.
+        step_distance = (distances * first_contact_mask.float()).sum(dim=1)
+
+        # Store into our buffer for the reward function to pick up.
+        self.foot_step_distance[:] = step_distance
+
+        # Update last_foot_contact_pos for feet that just hit the ground.
+        foot_mask_expanded = first_contact_mask.unsqueeze(-1).expand(-1, -1, 3)
+        self.last_foot_contact_pos = torch.where(foot_mask_expanded, current_foot_pos, self.last_foot_contact_pos)
+
+        # ===========
         self.base_pos[:] = self.robot.get_pos()
         self.base_quat[:] = self.robot.get_quat()
         self.base_euler = quat_to_xyz(
@@ -253,6 +278,11 @@ class ZbotEnv:
     def reset_idx(self, envs_idx):
         if len(envs_idx) == 0:
             return
+        kp_min, kp_max = self.env_cfg["kp_delta"] - self.env_cfg["kp"], self.env_cfg["kp_delta"] + self.env_cfg["kp"]
+        kv_min, kv_max = self.env_cfg["kd_delta"] - self.env_cfg["kd"], self.env_cfg["kd_delta"] + self.env_cfg["kd"]
+
+        self.robot.set_dofs_kp(kp_min + torch.rand(len(envs_idx)) * (kp_max - kp_min), self.motor_dofs, envs_idx=envs_idx)
+        self.robot.set_dofs_kv(kv_min + torch.rand(len(envs_idx)) * (kv_max - kv_min), self.motor_dofs, envs_idx=envs_idx)
 
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
@@ -343,24 +373,11 @@ class ZbotEnv:
         We apply a threshold window [threshold_min, threshold_max], then
         the reward is gained on first contact.
         """
-        threshold_min = 0.2
-        threshold_max = 0.5
+        threshold_min = 0.01
+        threshold_max = 0.25
 
         # If you want to scale by command, you can measure how big the XY or yaw command is:
         cmd_norm = torch.linalg.norm(self.commands, dim=1)
-
-        # “first_contact” can be recognized as feet_in_contact_last = false => true?
-        # We already computed that each step in step(...). If we want the “first_contact” mask for the reward:
-        # For convenience, re-derive it here or pass from step:
-        #    first_contact_mask = foot_contact & ~self.feet_in_contact_last
-        # but we can store it in a buffer if desired. 
-        # For an example, just define it below. We'll do a local approach:
-        # (But step() above already has a "first_contact" variable. 
-        #  If we want to reuse it, store in self.some_buffer each step.)
-
-        # We'll pretend we store it in self._first_contact each step for each foot:
-        # shape [num_envs, num_feet], boolean
-        first_contact_mask = (self.feet_air_time == 0.0) & (~self.feet_in_contact_last)
 
         # Weighted “air times” only on first contact
         # (feet_air_time - threshold_min) but clipped at threshold_max - threshold_min
@@ -371,9 +388,13 @@ class ZbotEnv:
         # Zero out if command is near zero (like in joystick)
         zero_mask = (cmd_norm <= 0.1)
         reward[zero_mask] = 0.0
-
-        # Also multiply by "first_contact_mask" if you only want reward on the step of contact.
-        # If you prefer a continuous measure, you can omit this. Example:
-        reward = reward * first_contact_mask.any(dim=1).float()
-
         return reward
+    
+    def _reward_foot_step_distance(self):
+        """
+        Reward is computed for each environment as the sum of step distances 
+        for feet that made 'first_contact' this step.
+        The bigger the step, the bigger the reward, which discourages 
+        small shuffling motions.
+        """
+        return self.foot_step_distance
