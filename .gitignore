@@ -28,3 +28,4 @@ adhoc/
 *.png
 !config_example.json
 logs
+wandb/

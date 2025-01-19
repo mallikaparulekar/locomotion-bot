@@ -49,14 +49,19 @@ def main():
         device=args.device,
     )
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device="mps")
+    runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
     runner.load(resume_path)
-    policy = runner.get_inference_policy(device="mps")
+    policy = runner.get_inference_policy(device=args.device)
 
     obs, _ = env.reset()
     with torch.no_grad():
-        gs.tools.run_in_another_thread(fn=run_sim, args=(env, policy, obs)) # start the simulation in another thread
+        # if on mac
+        if torch.backends.mps.is_available():
+            gs.tools.run_in_another_thread(fn=run_sim, args=(env, policy, obs)) # start the simulation in another thread
+        else:
+            run_sim(env, policy, obs)
+        
         env.scene.viewer.start() # start the viewer in the main thread (the render thread)
 
 

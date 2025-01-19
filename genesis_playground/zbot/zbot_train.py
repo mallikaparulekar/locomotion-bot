@@ -8,6 +8,8 @@ import argparse
 import os
 import pickle
 import shutil
+import wandb
+from datetime import datetime
 
 from zbot_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
@@ -136,6 +138,20 @@ def get_cfgs():
 
     return env_cfg, obs_cfg, reward_cfg, command_cfg
 
+class WandbOnPolicyRunner(OnPolicyRunner):
+    def log(self, info):
+        super().log(info)
+        # Log metrics to wandb
+        metrics = {
+            'train/rew_tracking_lin_vel': info['train/rew_tracking_lin_vel'],
+            'train/rew_tracking_ang_vel': info['train/rew_tracking_ang_vel'],
+            'train/rew_lin_vel_z': info['train/rew_lin_vel_z'],
+            'train/rew_base_height': info['train/rew_base_height'],
+            'train/rew_action_rate': info['train/rew_action_rate'],
+            'train/rew_similar_to_default': info['train/rew_similar_to_default'],
+        }
+        wandb.log(metrics)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -144,8 +160,10 @@ def main():
     parser.add_argument("--max_iterations", type=int, default=3000)
     parser.add_argument("--device", type=str, default="mps")
     parser.add_argument("--show_viewer", type=bool, default=False)
+    parser.add_argument("--wandb_entity", type=str, default=None)
+    parser.add_argument("--use_wandb", type=bool, default=False)
     args = parser.parse_args()
-
+    
     gs.init(logging_level="warning")
 
     log_dir = f"logs/{args.exp_name}"
@@ -166,14 +184,38 @@ def main():
         show_viewer=args.show_viewer,
     )
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+    # runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
 
     pickle.dump(
         [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
         open(f"{log_dir}/cfgs.pkl", "wb"),
     )
+    
+    if args.use_wandb:
+        run = wandb.init(
+                project=args.exp_name,
+                entity=args.wandb_entity,
+                name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                config={
+                "num_envs": args.num_envs,
+                "max_iterations": args.max_iterations,
+                "device": args.device,
+                "env_cfg": env_cfg,
+                "obs_cfg": obs_cfg,
+                "reward_cfg": reward_cfg,
+                "command_cfg": command_cfg,
+                "train_cfg": train_cfg,
+            }
+        )
+        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+    else:
+        runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
 
-    runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
+    try:
+        runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
+    finally:
+        if args.use_wandb:
+            wandb.finish()
 
 
 if __name__ == "__main__":
