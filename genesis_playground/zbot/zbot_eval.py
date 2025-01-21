@@ -3,11 +3,9 @@
 import argparse
 import os
 import pickle
-import threading
-import time
 import numpy as np
 import torch
-import pygame  # pip install pygame
+import pygame 
 from zbot_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
 
@@ -34,7 +32,6 @@ def handle_pygame_events():
     global USER_CMD
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            # If user closes the pygame window, exit
             pygame.quit()
             exit(0)
         elif event.type == pygame.KEYDOWN:
@@ -51,7 +48,6 @@ def handle_pygame_events():
             elif event.key == pygame.K_e:
                 USER_CMD["yaw"] -= INCREMENT
         elif event.type == pygame.KEYUP:
-            # Optionally revert the increment to zero out the command if desired
             if event.key == pygame.K_w:
                 USER_CMD["x"] -= INCREMENT
             elif event.key == pygame.K_s:
@@ -75,7 +71,6 @@ def keyboard_control_policy(obs: torch.Tensor) -> torch.Tensor:
     y_cmd = USER_CMD["y"]
     yaw_cmd = USER_CMD["yaw"]
 
-    # For forward/back (pitch)
     obs[:, 6] = x_cmd
     obs[:, 7] = y_cmd
     obs[:, 8] = yaw_cmd
@@ -98,32 +93,14 @@ def run_sim(env, policy, obs, use_keyboard=False):
     max_timesteps = 2000
 
     while timesteps < max_timesteps:
-        # If using keyboard, poll pygame events
         if use_keyboard:
             handle_pygame_events()
             obs = keyboard_control_policy(obs)
         
-        print(obs[:, 6:9])
         actions = policy(obs)
-        
-        actions = 4 * torch.tensor([
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(0), 
-            deg2rad(20)]).reshape(1, 10).to(env.device)
-        
-        print(actions)
 
         obs, _, rews, dones, infos = env.step(actions)
         timesteps += 1
-
-        # If using pygame, maybe fill the screen black each frame:
         if use_keyboard and screen is not None:
             screen.fill((0, 0, 0))
             pygame.display.flip()
@@ -150,7 +127,6 @@ def main():
         open(f"{log_dir}/cfgs.pkl", "rb")
     )
 
-    # Create the environment
     env = ZbotEnv(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
@@ -161,7 +137,6 @@ def main():
         device=args.device,
     )
 
-    # Load a trained policy
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
     runner.load(resume_path)
@@ -170,9 +145,10 @@ def main():
     obs, _ = env.reset()
 
     with torch.no_grad():
-        # If you’re using Apple M1’s MPS backend, we can optionally run sim in another thread via gs.tools.run_in_another_thread. 
-        # But if we want to handle pygame events in the main thread, we can just do run_sim directly:
-        run_sim(env, policy, obs, args.keyboard_control)
-
+        if torch.backends.mps.is_available():
+            gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
+        else:
+            run_sim(env, policy, obs, args.keyboard_control)
+        
 if __name__ == "__main__":
     main()

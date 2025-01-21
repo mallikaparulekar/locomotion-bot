@@ -69,7 +69,7 @@ def get_cfgs():
     env_cfg = {
         "num_actions": 10,
         # joint/link names
-        # NOTE: hip roll/yaw adn flipped between sim & real robot FIXME
+        # NOTE: hip roll/yaw flipped between sim & real robot FIXME
         "default_joint_angles": {  # [rad]
             "R_Hip_Pitch": 0.0,
             "L_Hip_Pitch": 0.0,
@@ -100,7 +100,7 @@ def get_cfgs():
             "end": [0.9, 1.1],
         },
         # link mass
-        # touching this is bad
+        # varying this too much collapses the training
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
             "end": [1.0, 1.0],
@@ -127,6 +127,7 @@ def get_cfgs():
     }
     obs_cfg = {
         "num_obs": 39,
+        # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,
             "ang_vel": 0.25,
@@ -146,12 +147,11 @@ def get_cfgs():
             "action_rate": -0.005,
             "similar_to_default": -0.1,
             "feet_air_time": 5.0,
-            # "foot_step_distance": 1.0,
         },
     }
     command_cfg = {
         "num_commands": 3,
-        "lin_vel_y_range": [0.0, 0.0], # move faster than above!
+        "lin_vel_y_range": [0.0, 0.0],
         "lin_vel_x_range": [-0.2, 0.4],
         "ang_vel_range": [-0.4, 0.4],
     }
@@ -218,15 +218,15 @@ def main():
                 entity=args.wandb_entity,
                 name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 config={
-                "num_envs": args.num_envs,
-                "max_iterations": args.max_iterations,
-                "device": args.device,
-                "env_cfg": env_cfg,
-                "obs_cfg": obs_cfg,
-                "reward_cfg": reward_cfg,
-                "command_cfg": command_cfg,
-                "train_cfg": train_cfg,
-            }
+                    "num_envs": args.num_envs,
+                    "max_iterations": args.max_iterations,
+                    "device": args.device,
+                    "env_cfg": env_cfg,
+                    "obs_cfg": obs_cfg,
+                    "reward_cfg": reward_cfg,
+                    "command_cfg": command_cfg,
+                    "train_cfg": train_cfg,
+                }
         )
         runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     else:

@@ -37,7 +37,7 @@ class ZbotEnv:
         self.num_commands = command_cfg["num_commands"]
 
         self.simulate_action_latency = True  # there is a 1 step latency on real robot
-        self.dt = 0.033 #0.02  # control frequence on real robot is 50hz
+        self.dt = 0.02  # control frequence on real robot is 50hz
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt)
 
         self.env_cfg = env_cfg
@@ -50,7 +50,7 @@ class ZbotEnv:
 
         # create scene
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=3), # substep=2 for 50hz
+            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2), # substep=2 for 50hz
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
@@ -102,8 +102,7 @@ class ZbotEnv:
             self.episode_sums[name] = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
         # initialize buffers
         
-        # ==== feet air time ====
-        self.foot_link_names = ["FOOT", "FOOT_2"]
+        # feet air time
         self.foot_link_indices = [
             10, 11
         ]
@@ -112,23 +111,6 @@ class ZbotEnv:
         # Shape: [num_envs, num_feet].
         self.feet_air_time = torch.zeros((self.num_envs, len(self.foot_link_indices)),
                                          device=self.device, dtype=torch.float)
-        # Track whether each foot was in contact last step to help detect "first contact."
-        self.feet_in_contact_last = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
-        
-        
-        # ===== feet step distance ====
-        self.last_foot_contact_pos = torch.zeros(
-            (self.num_envs, len(self.foot_link_indices), 3),
-            device=self.device,
-            dtype=gs.tc_float
-        )
-        # We'll store the most recent "step distance" for each environment:
-        self.foot_step_distance = torch.zeros(
-            (self.num_envs,),
-            device=self.device,
-            dtype=gs.tc_float
-        )
-        # ========
         
         self.base_lin_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.base_ang_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
@@ -170,8 +152,7 @@ class ZbotEnv:
         exec_actions = self.last_actions if self.simulate_action_latency else self.actions
         target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
-
-        # get torques
+        
         torques = self.robot.get_dofs_control_force(self.motor_dofs)
         max_torque = self.env_cfg["max_torque"]
         # RFI https://arxiv.org/pdf/2209.12878
@@ -184,12 +165,7 @@ class ZbotEnv:
         # update buffers
         self.episode_length_buf += 1
         
-        
-        # ==== foot contacts ====
         contacts = self.robot.get_contacts()
-        # -----------------------------------------------------------
-        # 1) Determine foot contacts for each environment.
-        # -----------------------------------------------------------
         # foot_contact[e, f] = True if foot f in env e is on the floor.
         foot_contact = torch.zeros(
             (self.num_envs, len(self.foot_link_indices)),
@@ -199,7 +175,6 @@ class ZbotEnv:
         
         plane_link_index = 0
         
-        # For each env, read the link data from the contact dictionary:
         link_a = contacts["link_a"]  # shape [num_envs, num_contacts]
         link_b = contacts["link_b"]  # shape [num_envs, num_contacts]
         
@@ -212,34 +187,8 @@ class ZbotEnv:
                         
         not_in_contact = ~foot_contact
         self.feet_air_time += (not_in_contact * self.dt)
-
-        # Reset air time to 0 if foot is currently in contact
         self.feet_air_time[foot_contact] = 0.0
 
-        # =========== stride distance [borken] ===========
-        # # Update the "in_contact_last" state
-        # self.feet_in_contact_last = foot_contact.clone()
-
-        # first_contact_mask = foot_contact & ~self.feet_in_contact_last
-
-        # # Current foot positions [num_envs, n_links, 3], slice the relevant foot link indices.
-        # all_links_pos = self.robot.get_links_pos()       # shape (num_envs, n_links, 3)
-        # current_foot_pos = all_links_pos[:, self.foot_link_indices, :]  # shape (num_envs, n_feet, 3)
-
-        # # Compute the Euclidean distance traveled by each foot since last ground contact.
-        # distances = torch.norm(current_foot_pos - self.last_foot_contact_pos, dim=-1) # (num_envs, n_feet)
-
-        # # Sum the distance only on the step that foot re-contacts the ground.
-        # step_distance = (distances * first_contact_mask.float()).sum(dim=1)
-
-        # # Store into our buffer for the reward function to pick up.
-        # self.foot_step_distance[:] = step_distance
-
-        # # Update last_foot_contact_pos for feet that just hit the ground.
-        # foot_mask_expanded = first_contact_mask.unsqueeze(-1).expand(-1, -1, 3)
-        # self.last_foot_contact_pos = torch.where(foot_mask_expanded, current_foot_pos, self.last_foot_contact_pos)
-
-        # ===========
         self.base_pos[:] = self.robot.get_pos()
         self.base_quat[:] = self.robot.get_quat()
         self.base_euler = quat_to_xyz(
@@ -262,13 +211,13 @@ class ZbotEnv:
 
         # check termination and reset
         self.reset_buf = self.episode_length_buf > self.max_episode_length
-        # self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
-        # self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
+        self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
+        self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
 
-        # time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
-        # self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
-        # self.extras["time_outs"][time_out_idx] = 1.0
-#######################
+        time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
+        self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
+        self.extras["time_outs"][time_out_idx] = 1.0
+
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
         # compute reward
@@ -443,26 +392,9 @@ class ZbotEnv:
         threshold_min = 0.01
         threshold_max = 0.5
 
-        # If you want to scale by command, you can measure how big the XY or yaw command is:
         cmd_norm = torch.linalg.norm(self.commands, dim=1)
-
-        # Weighted “air times” only on first contact
-        # (feet_air_time - threshold_min) but clipped at threshold_max - threshold_min
         clipped = (self.feet_air_time - threshold_min).clamp(min=0.0, max=threshold_max - threshold_min)
-
-        # sum across feet
         reward = clipped.sum(dim=1)
-
-        # Zero out if command is near zero (like in joystick)
         zero_mask = (cmd_norm <= 0.1)
         reward[zero_mask] = 0.0
         return reward
-    
-    def _reward_foot_step_distance(self):
-        """
-        Reward is computed for each environment as the sum of step distances 
-        for feet that made 'first_contact' this step.
-        The bigger the step, the bigger the reward, which discourages 
-        small shuffling motions.
-        """
-        return self.foot_step_distance
