@@ -1,6 +1,7 @@
 """ ZBot environment """
 import torch
 import math
+import numpy as np
 import genesis as gs
 from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
 
@@ -8,10 +9,26 @@ from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transfo
 def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
+def cosine_interpolation(start, end, t, max_t):
+    return start + (end - start) * (1 - math.cos(t * math.pi / max_t)) / 2
+
+def linear_interpolation(start, end, t, max_t):
+    return start + (end - start) * (t / max_t)
+
+def get_from_curriculum(curriculum, t, max_t):
+    min_start = curriculum["start"][0]
+    min_end = curriculum["end"][0]
+    max_start = curriculum["start"][1]
+    max_end = curriculum["end"][1]
+    min_value = linear_interpolation(min_start, min_end, t, max_t)
+    max_value = linear_interpolation(max_start, max_end, t, max_t)
+    return np.random.uniform(min_value, max_value)
 
 class ZbotEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="mps"):
         self.device = torch.device(device)
+        self.total_steps = 0
+        self.max_steps = 40_000_000
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -33,7 +50,7 @@ class ZbotEnv:
 
         # create scene
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
+            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2), # substep=2 for 50hz
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
@@ -51,7 +68,7 @@ class ZbotEnv:
         )
 
         # add plain
-        self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
+        self.plane = self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
         # add robot
         self.base_init_pos = torch.tensor(self.env_cfg["base_init_pos"], device=self.device)
@@ -64,7 +81,7 @@ class ZbotEnv:
                 quat=self.base_init_quat.cpu().numpy(),
             ),
         )
-
+        
         # build
         self.scene.build(n_envs=num_envs)
 
@@ -72,8 +89,10 @@ class ZbotEnv:
         self.motor_dofs = [self.robot.get_joint(name).dof_idx_local for name in self.env_cfg["dof_names"]]
 
         # PD control parameters
-        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs)
-        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs)
+        kp_values = [self.env_cfg["kp"]] * self.num_actions
+        kv_values = [self.env_cfg["kd"]] * self.num_actions
+        self.robot.set_dofs_kp(kp_values, self.motor_dofs)
+        self.robot.set_dofs_kv(kv_values, self.motor_dofs)
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -81,8 +100,18 @@ class ZbotEnv:
             self.reward_scales[name] *= self.dt
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
-
         # initialize buffers
+        
+        # feet air time
+        self.foot_link_indices = [
+            10, 11
+        ]
+
+        # Create buffers to track how long each foot has been in the air.
+        # Shape: [num_envs, num_feet].
+        self.feet_air_time = torch.zeros((self.num_envs, len(self.foot_link_indices)),
+                                         device=self.device, dtype=torch.float)
+        
         self.base_lin_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.base_ang_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
         self.projected_gravity = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
@@ -123,10 +152,43 @@ class ZbotEnv:
         exec_actions = self.last_actions if self.simulate_action_latency else self.actions
         target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
+        
+        torques = self.robot.get_dofs_control_force(self.motor_dofs)
+        max_torque = self.env_cfg["max_torque"]
+        # RFI https://arxiv.org/pdf/2209.12878
+        noise = (2.0 * torch.rand_like(torques) - 1.0) * self.env_cfg["rfi_scale"]
+        torques = torques + noise
+        torques = torch.clamp(torques, -max_torque, max_torque)
+        self.robot.control_dofs_force(torques, self.motor_dofs)
         self.scene.step()
 
         # update buffers
         self.episode_length_buf += 1
+        
+        contacts = self.robot.get_contacts()
+        # foot_contact[e, f] = True if foot f in env e is on the floor.
+        foot_contact = torch.zeros(
+            (self.num_envs, len(self.foot_link_indices)),
+            device=self.device,
+            dtype=torch.bool
+        )
+        
+        plane_link_index = 0
+        
+        link_a = contacts["link_a"]  # shape [num_envs, num_contacts]
+        link_b = contacts["link_b"]  # shape [num_envs, num_contacts]
+        
+        # Create a mask for each foot link index
+        for f_idx, foot_li in enumerate(self.foot_link_indices):
+            # Check if either link_a or link_b matches foot_li and the other matches plane_link_index
+            foot_plane_contact = ((link_a == foot_li) & (link_b == plane_link_index)) | ((link_b == foot_li) & (link_a == plane_link_index))
+            # Any contact along the contact dimension means that foot is in contact
+            foot_contact[:, f_idx] = torch.tensor(foot_plane_contact.any(1))
+                        
+        not_in_contact = ~foot_contact
+        self.feet_air_time += (not_in_contact * self.dt)
+        self.feet_air_time[foot_contact] = 0.0
+
         self.base_pos[:] = self.robot.get_pos()
         self.base_quat[:] = self.robot.get_quat()
         self.base_euler = quat_to_xyz(
@@ -180,6 +242,7 @@ class ZbotEnv:
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
+        self.total_steps += self.num_envs
 
         return self.obs_buf, None, self.rew_buf, self.reset_buf, self.extras
 
@@ -192,6 +255,45 @@ class ZbotEnv:
     def reset_idx(self, envs_idx):
         if len(envs_idx) == 0:
             return
+        # Sample uniform multipliers between min and max
+        kp_mult = gs_rand_float(
+            self.env_cfg["kp_multipliers"][0],
+            self.env_cfg["kp_multipliers"][1],
+            (1,),
+            self.device
+        )
+        kd_mult = gs_rand_float(
+            self.env_cfg["kd_multipliers"][0], 
+            self.env_cfg["kd_multipliers"][1],
+            (1,),
+            self.device
+        )
+
+        # Apply multipliers to default values
+        kp_values = torch.full(
+            (self.num_actions,),
+            self.env_cfg["kp"] * kp_mult.item(),
+            device=self.device
+        )
+        kd_values = torch.full(
+            (self.num_actions,),
+            self.env_cfg["kd"] * kd_mult.item(), 
+            device=self.device
+        )
+
+        # Set the PD gains
+        self.robot.set_dofs_kp(kp_values, self.motor_dofs)
+        self.robot.set_dofs_kv(kd_values, self.motor_dofs)
+        
+        # friction
+        friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
+        self.robot.set_friction(friction)
+        self.plane.set_friction(friction)
+        
+        # link mass
+        link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
+        for link in self.robot.links:
+            link.set_mass(link.get_mass() * link_mass_mult)
 
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
@@ -230,7 +332,12 @@ class ZbotEnv:
 
     def reset(self):
         self.reset_buf[:] = True
-        self.reset_idx(torch.arange(self.num_envs, device=self.device))
+        # Reset environments in chunks of 32 for better efficiency
+        chunk_size = 32
+        for i in range(0, self.num_envs, chunk_size):
+            chunk_end = min(i + chunk_size, self.num_envs)
+            chunk_indices = torch.arange(i, chunk_end, device=self.device)
+            self.reset_idx(chunk_indices)
         return self.obs_buf, None
 
     # ------------ reward functions----------------
@@ -275,3 +382,19 @@ class ZbotEnv:
     def _reward_energy_efficiency(self):
         # Reward energy efficiency by penalizing high joint velocities
         return -torch.sum(torch.square(self.dof_vel), dim=1)
+    
+    def _reward_feet_air_time(self):
+        """
+        Mirrors logic from joystick.py: reward for how long each foot is in the air.
+        We apply a threshold window [threshold_min, threshold_max], then
+        the reward is gained on first contact.
+        """
+        threshold_min = 0.01
+        threshold_max = 0.5
+
+        cmd_norm = torch.linalg.norm(self.commands, dim=1)
+        clipped = (self.feet_air_time - threshold_min).clamp(min=0.0, max=threshold_max - threshold_min)
+        reward = clipped.sum(dim=1)
+        zero_mask = (cmd_norm <= 0.1)
+        reward[zero_mask] = 0.0
+        return reward
