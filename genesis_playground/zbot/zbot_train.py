@@ -56,7 +56,7 @@ def get_train_cfg(exp_name, max_iterations):
             "resume_path": None,
             "run_name": "",
             "runner_class_name": "OnPolicyRunner",
-            "save_interval": 10,
+            "save_interval": 100,
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
@@ -204,8 +204,6 @@ def main():
         device=args.device,
         show_viewer=args.show_viewer,
     )
-
-    # runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
 
     pickle.dump(
         [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
