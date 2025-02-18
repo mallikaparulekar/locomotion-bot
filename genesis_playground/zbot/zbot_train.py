@@ -67,7 +67,7 @@ def get_train_cfg(exp_name, max_iterations):
 
 def get_cfgs():
     env_cfg = {
-        "num_actions": 10,
+        "num_actions": 12,
         # joint/link names
         # NOTE: hip roll/yaw flipped between sim & real robot FIXME
         "default_joint_angles": {  # [rad]
@@ -81,6 +81,8 @@ def get_cfgs():
             "L_Knee_Pitch": 0.0,
             "R_Ankle_Pitch": 0.0,
             "L_Ankle_Pitch": 0.0,
+            "R_Shoulder_Pitch": 0.0,
+            "L_Shoulder_Pitch": 0.0,
         },
         "dof_names": [
             "R_Hip_Pitch",
@@ -93,6 +95,8 @@ def get_cfgs():
             "L_Knee_Pitch",
             "R_Ankle_Pitch",
             "L_Ankle_Pitch",
+            "R_Shoulder_Pitch",
+            "L_Shoulder_Pitch",
         ],
         # friction
         "env_friction_range": {
@@ -138,6 +142,7 @@ def get_cfgs():
     reward_cfg = {
         "tracking_sigma": 0.25,
         "base_height_target": 0.3,
+        "arm_height_target": 0.3,
         "feet_height_target": 0.075,
         "reward_scales": {
             "tracking_lin_vel": 1.0,

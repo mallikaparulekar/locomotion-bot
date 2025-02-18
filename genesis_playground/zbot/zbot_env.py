@@ -398,3 +398,10 @@ class ZbotEnv:
         zero_mask = (cmd_norm <= 0.1)
         reward[zero_mask] = 0.0
         return reward
+    
+
+    def _reward_arm_height(self):
+        # Penalize arm height away from target (do right and left arm)
+        right_arm_z = self.dof_pos[:, self.env_cfg["dof_names"].index("R_Shoulder_Pitch")][2]
+        left_arm_z = self.dof_pos[:, self.env_cfg["dof_names"].index("L_Shoulder_Pitch")][2]
+        return torch.square(right_arm_z - self.reward_cfg["arm_height_target"]) + torch.square(left_arm_z - self.reward_cfg["arm_height_target"])
