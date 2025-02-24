@@ -148,6 +148,11 @@ class ZbotEnv:
         self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
 
     def step(self, actions):
+    
+        if not isinstance(actions, torch.Tensor):
+            actions = torch.tensor(actions, dtype=gs.tc_float, device=self.device)
+        if actions.ndim == 1:
+            actions = actions.unsqueeze(0)
         self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
         exec_actions = self.last_actions if self.simulate_action_latency else self.actions
         target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
@@ -228,6 +233,24 @@ class ZbotEnv:
             self.episode_sums[name] += rew
 
         # compute observations
+
+        # Compute each component of the observation
+        # tensor1 = self.base_ang_vel * self.obs_scales["ang_vel"]  # expected shape: (num_envs, 3)
+        # tensor2 = self.projected_gravity                       # expected shape: (num_envs, 3)
+        # tensor3 = self.commands * self.commands_scale          # expected shape: (num_envs, 3)
+        # tensor4 = (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"]  # expected: (num_envs, 12)
+        # tensor5 = self.dof_vel * self.obs_scales["dof_vel"]      # expected: (num_envs, 12)
+        # tensor6 = self.actions                                 # expected shape: (num_envs, 12)
+
+        # # Print shapes for debugging
+        # print("Tensor shapes for observation concatenation:")
+        # print("tensor1 (base_ang_vel * scale):", tensor1.shape)
+        # print("tensor2 (projected_gravity):", tensor2.shape)
+        # print("tensor3 (commands * commands_scale):", tensor3.shape)
+        # print("tensor4 ((dof_pos - default_dof_pos) * scale):", tensor4.shape)
+        # print("tensor5 (dof_vel * scale):", tensor5.shape)
+        # print("tensor6 (actions):", tensor6.shape)
+
         self.obs_buf = torch.cat(
             [
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3

@@ -13,9 +13,17 @@ import wandb
 from datetime import datetime
 
 from zbot_env import ZbotEnv
+from zbot_gym_env import ZBotGymEnv
 from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
+
+import sys
+sys.path.append("../sbx-tinkering")
+import sbx
+print("dir(sbx):")
+print(dir(sbx))
+from sbx import PPO
 
 
 def get_train_cfg(exp_name, max_iterations):
@@ -209,32 +217,44 @@ def main():
         [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
         open(f"{log_dir}/cfgs.pkl", "wb"),
     )
-    
-    if args.use_wandb:
-        run = wandb.init(
-                project=args.exp_name,
-                entity=args.wandb_entity,
-                name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                config={
-                    "num_envs": args.num_envs,
-                    "max_iterations": args.max_iterations,
-                    "device": args.device,
-                    "env_cfg": env_cfg,
-                    "obs_cfg": obs_cfg,
-                    "reward_cfg": reward_cfg,
-                    "command_cfg": command_cfg,
-                    "train_cfg": train_cfg,
-                }
-        )
-        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
-    else:
-        runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
 
-    try:
-        runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
-    finally:
-        if args.use_wandb:
-            wandb.finish()
+    # Wrap the ZBot environment
+    gym_env = ZBotGymEnv(env)
+
+    # Initialize the model with the environment
+    model = PPO("MlpPolicy", gym_env, verbose=1, device="mps")
+
+    # Train the model
+    model.learn(total_timesteps=1000)
+
+    # Save the model
+    model.save("ppo_zbot_sb3")
+    
+    # if args.use_wandb:
+    #     run = wandb.init(
+    #             project=args.exp_name,
+    #             entity=args.wandb_entity,
+    #             name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    #             config={
+    #                 "num_envs": args.num_envs,
+    #                 "max_iterations": args.max_iterations,
+    #                 "device": args.device,
+    #                 "env_cfg": env_cfg,
+    #                 "obs_cfg": obs_cfg,
+    #                 "reward_cfg": reward_cfg,
+    #                 "command_cfg": command_cfg,
+    #                 "train_cfg": train_cfg,
+    #             }
+    #     )
+    #     runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+    # else:
+    #     runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+
+    # try:
+    #     runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
+    # finally:
+    #     if args.use_wandb:
+    #         wandb.finish()
 
 
 if __name__ == "__main__":
