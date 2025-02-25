@@ -8,7 +8,8 @@ import torch
 import pygame 
 from zbot_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
-from sbx import PPO
+# from sbx import PPO
+from stable_baselines3 import PPO
 from zbot_gym_env import ZBotGymEnv
 
 import genesis as gs
@@ -145,7 +146,7 @@ def main():
     # policy = runner.get_inference_policy(device=args.device)
 
     gym_env = ZBotGymEnv(env)
-    model_path = os.path.join("logs/zbot-walking/ppo_zbot_sb3_10000")
+    model_path = os.path.join("logs/zbot-walking/ppo_zbot_sb3_100000")
     model = PPO.load(model_path, env=gym_env)
 
     def inference_policy(obs):

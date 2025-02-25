@@ -243,6 +243,7 @@ def main():
                 learning_rate=train_cfg["algorithm"]["learning_rate"],
                 clip_range=train_cfg["algorithm"]["clip_param"],
                 n_steps = train_cfg["runner"]["num_steps_per_env"],
+                # note: check this calculation
                 batch_size = int(train_cfg["runner"]["num_steps_per_env"] * args.num_envs / train_cfg["algorithm"]["num_mini_batches"]),
                 n_epochs = train_cfg["algorithm"]["num_learning_epochs"],
                 gamma = train_cfg["algorithm"]["gamma"],
@@ -255,7 +256,7 @@ def main():
             
 
     # Train the model
-    total_timesteps = 10000
+    total_timesteps = 100000
     model.learn(total_timesteps=total_timesteps)
 
     # Save the model
