@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 import torch
 import pygame 
-from zbot_env import ZbotEnv
+from genesis_playground.zbot.min_policy.zbot_mp_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
@@ -112,7 +112,7 @@ def run_sim(env, policy, obs, use_keyboard=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="zeroth-walking")
+    parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking")
     parser.add_argument("--ckpt", type=int, default=100)
     parser.add_argument("--show_viewer", action='store_true')
     parser.add_argument("--num_envs", type=int, default=1)
@@ -144,15 +144,11 @@ def main():
 
     obs, _ = env.reset()
 
-    # with torch.no_grad():
-    #     if torch.backends.mps.is_available():
-    #         gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
-    #     else:
-    #         run_sim(env, policy, obs, args.keyboard_control)
     with torch.no_grad():
         gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
         if args.show_viewer:
             env.scene.viewer.start()  # Explicit start for viewer (on Macbook)
-        
+
+
 if __name__ == "__main__":
     main()
