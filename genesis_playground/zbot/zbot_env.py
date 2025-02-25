@@ -353,6 +353,11 @@ class ZbotEnv:
 
         self._resample_commands(envs_idx)
 
+        # Add overall episode reward and length (SB3 expects "r" and "l")
+        self.extras["episode"]["r"] = torch.mean((self.rew_buf[envs_idx]).float()).item()  # or sum, depending on your definition
+        self.extras["episode"]["l"] = torch.mean(self.episode_length_buf[envs_idx].float()).item()
+
+
     def reset(self):
         self.reset_buf[:] = True
         # Reset environments in chunks of 32 for better efficiency

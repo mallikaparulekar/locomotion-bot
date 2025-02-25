@@ -18,12 +18,18 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-import sys
-sys.path.append("../sbx-tinkering")
-import sbx
-print("dir(sbx):")
-print(dir(sbx))
-from sbx import PPO
+# import sys
+# sys.path.append("../sbx-tinkering")
+# import sbx
+# print("dir(sbx):")
+# print(dir(sbx))
+# from sbx import PPO
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from zbot_gym_env import ZBotVecEnv
+
+
 
 
 def get_train_cfg(exp_name, max_iterations):
@@ -218,8 +224,16 @@ def main():
         open(f"{log_dir}/cfgs.pkl", "wb"),
     )
 
-    # Wrap the ZBot environment
-    gym_env = ZBotGymEnv(env)
+
+    if args.num_envs == 1:
+        gym_env = DummyVecEnv([lambda: ZBotGymEnv(env)])
+    else:
+        gym_env = ZBotVecEnv(env)
+
+
+
+
+
 
     # Initialize the model with the environment
     model = PPO("MlpPolicy", 
