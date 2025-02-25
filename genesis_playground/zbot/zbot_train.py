@@ -222,13 +222,30 @@ def main():
     gym_env = ZBotGymEnv(env)
 
     # Initialize the model with the environment
-    model = PPO("MlpPolicy", gym_env, verbose=1, device="mps")
+    model = PPO("MlpPolicy", 
+                gym_env, 
+                verbose=1, 
+                device="mps",
+                learning_rate=train_cfg["algorithm"]["learning_rate"],
+                clip_range=train_cfg["algorithm"]["clip_param"],
+                n_steps = train_cfg["runner"]["num_steps_per_env"],
+                batch_size = int(train_cfg["runner"]["num_steps_per_env"] * args.num_envs / train_cfg["algorithm"]["num_mini_batches"]),
+                n_epochs = train_cfg["algorithm"]["num_learning_epochs"],
+                gamma = train_cfg["algorithm"]["gamma"],
+                gae_lambda = train_cfg["algorithm"]["lam"],
+                ent_coef = train_cfg["algorithm"]["entropy_coef"],
+                target_kl = train_cfg["algorithm"]["desired_kl"],
+                vf_coef = train_cfg["algorithm"]["value_loss_coef"]
+                )
+
+            
 
     # Train the model
-    model.learn(total_timesteps=1000)
+    total_timesteps = 10000
+    model.learn(total_timesteps=total_timesteps)
 
     # Save the model
-    model.save("ppo_zbot_sb3")
+    model.save(log_dir + "/ppo_zbot_sb3_{}".format(total_timesteps))
     
     # if args.use_wandb:
     #     run = wandb.init(

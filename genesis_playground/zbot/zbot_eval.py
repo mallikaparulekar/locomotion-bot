@@ -8,6 +8,8 @@ import torch
 import pygame 
 from zbot_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
+from sbx import PPO
+from zbot_gym_env import ZBotGymEnv
 
 import genesis as gs
 
@@ -137,18 +139,33 @@ def main():
         device=args.device,
     )
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
-    resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
-    runner.load(resume_path)
-    policy = runner.get_inference_policy(device=args.device)
+    # runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+    # resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
+    # runner.load(resume_path)
+    # policy = runner.get_inference_policy(device=args.device)
+
+    gym_env = ZBotGymEnv(env)
+    model_path = os.path.join("logs/zbot-walking/ppo_zbot_sb3_10000")
+    model = PPO.load(model_path, env=gym_env)
+
+    def inference_policy(obs):
+        # move obs to cpu
+        obs = obs.cpu()
+        action, _ = model.predict(obs, deterministic=True)
+        return action
 
     obs, _ = env.reset()
 
-    with torch.no_grad():
-        if torch.backends.mps.is_available():
-            gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
-        else:
-            run_sim(env, policy, obs, args.keyboard_control)
+    # with torch.no_grad():
+    #     if torch.backends.mps.is_available():
+    #         print("Running simulation with MPS")
+    #         gs.tools.run_in_another_thread(run_sim, args=(env, inference_policy, obs, args.keyboard_control))
+    #     else:
+    #         run_sim(env, inference_policy, obs, args.keyboard_control)
         
+    with torch.no_grad():
+        gs.tools.run_in_another_thread(run_sim, args=(env, inference_policy, obs, args.keyboard_control))
+        if args.show_viewer:
+            env.scene.viewer.start()
 if __name__ == "__main__":
     main()
