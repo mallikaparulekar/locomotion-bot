@@ -145,10 +145,9 @@ def main():
     obs, _ = env.reset()
 
     with torch.no_grad():
-        if torch.backends.mps.is_available():
-            gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
-        else:
-            run_sim(env, policy, obs, args.keyboard_control)
+        gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
+        if args.show_viewer:
+            env.scene.viewer.start()
         
 if __name__ == "__main__":
     main()
