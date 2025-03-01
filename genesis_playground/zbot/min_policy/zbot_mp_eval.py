@@ -18,7 +18,7 @@ INCREMENT = 0.6
 def init_pygame_window():
     """Initialize a small pygame window so that we can capture keyboard events."""
     pygame.init()
-    screen = pygame.display.set_mode((400, 300))
+    screen = pygame.display.set_mode((800, 600), pygame.RESIZABLE)
     pygame.display.set_caption("Keyboard Control")
     return screen
 
@@ -60,6 +60,9 @@ def handle_pygame_events():
                 USER_CMD["yaw"] -= INCREMENT
             elif event.key == pygame.K_e:
                 USER_CMD["yaw"] += INCREMENT
+        elif event.type == pygame.VIDEORESIZE:
+            # Handle window resize events
+            pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
 def keyboard_control_policy(obs: torch.Tensor) -> torch.Tensor:
     """
@@ -119,6 +122,10 @@ def main():
     parser.add_argument("--device", type=str, default="mps")
     parser.add_argument("--keyboard_control", action='store_true',
                         help="Enable manual keyboard control, overriding policy.")
+    parser.add_argument("--viewer_width", type=int, default=1280,
+                        help="Width of the Genesis viewer window")
+    parser.add_argument("--viewer_height", type=int, default=720,
+                        help="Height of the Genesis viewer window")
     args = parser.parse_args()
 
     gs.init()
@@ -136,6 +143,24 @@ def main():
         show_viewer=args.show_viewer,
         device=args.device,
     )
+
+     # Set the Genesis viewer size BEFORE starting the viewer
+    if args.show_viewer:
+        # Try different approaches based on the Genesis API version
+        try:
+            # Method 1: Directly set viewer size
+            env.scene.viewer.width = args.viewer_width
+            env.scene.viewer.height = args.viewer_height
+        except:
+            try:
+                # Method 2: Set window size through config
+                env.scene.viewer.window_size = (args.viewer_width, args.viewer_height)
+            except:
+                try:
+                    # Method 3: Use dedicated method (newer Genesis versions)
+                    env.scene.viewer.set_window_size(args.viewer_width, args.viewer_height)
+                except:
+                    print("Warning: Could not set viewer size. Genesis API might have changed.")
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")

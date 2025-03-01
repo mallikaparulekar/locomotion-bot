@@ -18,7 +18,7 @@ INCREMENT = 0.6
 def init_pygame_window():
     """Initialize a small pygame window so that we can capture keyboard events."""
     pygame.init()
-    screen = pygame.display.set_mode((400, 300))
+    screen = pygame.display.set_mode((300, 400))
     pygame.display.set_caption("Keyboard Control")
     return screen
 
