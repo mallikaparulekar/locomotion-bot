@@ -227,10 +227,13 @@ class ZbotEnv:
 
         # compute reward
         self.rew_buf[:] = 0.0
+        # print("\n[DEBUG] --- Reward Calculation Start ---")
         for name, reward_func in self.reward_functions.items():
             rew = reward_func() * self.reward_scales[name]
+            # print(f"[DEBUG] Reward {name}: {rew.mean().item()}")
             self.rew_buf += rew
             self.episode_sums[name] += rew
+        # print(f"[DEBUG] Total Reward: {self.rew_buf.mean().item()}") 
 
         # compute observations
 

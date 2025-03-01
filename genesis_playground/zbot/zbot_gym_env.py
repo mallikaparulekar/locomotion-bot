@@ -37,29 +37,58 @@ class ZBotVecEnv(VecEnv):
     def step_wait(self):
         return self.step(self._actions)
     
-    def step(self, actions):
-        # Unpack the five values; ignore the second one
-        obs, _, reward, done, info = self.zbot_env.step(actions)
+    # def step(self, actions):
+    #     # Unpack the five values; ignore the second one
+    #     obs, _, reward, done, info = self.zbot_env.step(actions)
         
+    #     # Convert torch tensors to numpy arrays if needed
+    #     obs = self._to_cpu(obs)
+    #     reward = self._to_cpu(reward)
+    #     done = self._to_cpu(done)
+        
+    #     # Ensure info is a dictionary
+    #     if not isinstance(info, dict):
+    #         info = {}
+        
+    #     # If the observation is unbatched, add a batch dimension
+    #     if len(obs.shape) == 1:
+    #         obs = np.expand_dims(obs, axis=0)
+    #         reward = np.array([reward])
+    #         done = np.array([done])
+        
+    #     # Wrap info in a list (one per environment)
+    #     infos = [info.copy() for _ in range(self.num_envs)]
+        
+    #     return obs, reward, done, infos
+
+    def step(self, actions):
+        """Execute environment step with given actions."""
+        obs, _, reward, done, info = self.zbot_env.step(actions)
+
         # Convert torch tensors to numpy arrays if needed
         obs = self._to_cpu(obs)
-        reward = self._to_cpu(reward)
-        done = self._to_cpu(done)
-        
-        # Ensure info is a dictionary
-        if not isinstance(info, dict):
-            info = {}
-        
-        # If the observation is unbatched, add a batch dimension
-        if len(obs.shape) == 1:
-            obs = np.expand_dims(obs, axis=0)
-            reward = np.array([reward])
-            done = np.array([done])
-        
-        # Wrap info in a list (one per environment)
-        infos = [info.copy() for _ in range(self.num_envs)]
-        
-        return obs, reward, done, infos
+        reward = self._to_cpu(reward).astype(np.float32)
+        done = self._to_cpu(done).astype(bool)
+
+        # Ensure `info` is correctly formatted
+        if isinstance(info, dict):  
+            infos = [info.copy() for _ in range(self.num_envs)]  # Expand single dict
+        else:
+            infos = info  # Assume it's already a list of dicts
+
+        # Store the final observation before reset (for SB3 compatibility)
+        for i in range(self.num_envs):
+            if done[i]:  
+                infos[i]["terminal_observation"] = obs[i].copy()
+                if self.zbot_env.episode_length_buf[i] >= self.zbot_env.max_episode_length:
+                    infos[i]["TimeLimit.truncated"] = True  # Mark timeout terminations
+
+        # SB3 automatically resets environments after step(), so return new observations
+        new_obs = self.zbot_env.reset()[0] if np.any(done) else obs
+        new_obs = self._to_cpu(new_obs)
+
+        return new_obs, reward, done, infos
+
 
 
 

@@ -10,6 +10,7 @@ import os
 import pickle
 import shutil
 import wandb
+import torch
 from datetime import datetime
 
 from zbot_env import ZbotEnv
@@ -17,6 +18,7 @@ from zbot_gym_env import ZBotGymEnv
 from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
+from stable_baselines3.common.vec_env import VecNormalize
 
 # import sys
 # sys.path.append("../sbx-tinkering")
@@ -27,6 +29,7 @@ import genesis as gs
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
+from custom_policy import CustomActorCriticPolicy
 from zbot_gym_env import ZBotVecEnv
 
 
@@ -41,7 +44,8 @@ def get_train_cfg(exp_name, max_iterations):
             "entropy_coef": 0.01,
             "gamma": 0.99,
             "lam": 0.95,
-            "learning_rate": 0.001,
+            # "learning_rate": 0.001,
+            "learning_rate": 0.0006,
             "max_grad_norm": 1.0,
             "num_learning_epochs": 5,
             "num_mini_batches": 4,
@@ -230,33 +234,67 @@ def main():
     else:
         gym_env = ZBotVecEnv(env)
 
+    # gym_env = VecNormalize(gym_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
+    n_steps = int(train_cfg["runner"]["num_steps_per_env"] * args.num_envs / train_cfg["algorithm"]["num_mini_batches"])
+    batch_size = int(train_cfg["runner"]["num_steps_per_env"] * args.num_envs / train_cfg["algorithm"]["num_mini_batches"])
+    print("n_steps:", n_steps)
+    print("batch_size:", batch_size)
 
 
 
 
     # Initialize the model with the environment
-    model = PPO("MlpPolicy", 
-                gym_env, 
-                verbose=1, 
-                device="mps",
-                learning_rate=train_cfg["algorithm"]["learning_rate"],
-                clip_range=train_cfg["algorithm"]["clip_param"],
-                n_steps = train_cfg["runner"]["num_steps_per_env"],
-                # note: check this calculation
-                batch_size = int(train_cfg["runner"]["num_steps_per_env"] * args.num_envs / train_cfg["algorithm"]["num_mini_batches"]),
-                n_epochs = train_cfg["algorithm"]["num_learning_epochs"],
-                gamma = train_cfg["algorithm"]["gamma"],
-                gae_lambda = train_cfg["algorithm"]["lam"],
-                ent_coef = train_cfg["algorithm"]["entropy_coef"],
-                target_kl = train_cfg["algorithm"]["desired_kl"],
-                vf_coef = train_cfg["algorithm"]["value_loss_coef"]
-                )
+    # model = PPO(CustomActorCriticPolicy, 
+    #             gym_env, 
+    #             verbose=1, 
+    #             device="mps",
+    #             learning_rate=train_cfg["algorithm"]["learning_rate"],
+    #             clip_range=train_cfg["algorithm"]["clip_param"],
+    #             # n_steps = train_cfg["runner"]["num_steps_per_env"],
+    #              # num_steps_per_env×num_envs÷num_mini_batches
+    #             n_steps = n_steps,
+    #             # note: check this calculation
+    #             batch_size = batch_size,
+    #             n_epochs = train_cfg["algorithm"]["num_learning_epochs"],
+    #             gamma = train_cfg["algorithm"]["gamma"],
+    #             gae_lambda = train_cfg["algorithm"]["lam"],
+    #             ent_coef = train_cfg["algorithm"]["entropy_coef"],
+    #             target_kl = train_cfg["algorithm"]["desired_kl"],
+    #             vf_coef = train_cfg["algorithm"]["value_loss_coef"]
+    #             )
+
+
+    # trying using policy kwargs
+    policy_kwargs = dict(
+    activation_fn=torch.nn.ELU,
+    net_arch=dict(pi=[512, 256, 128], vf=[512, 256, 128]), 
+    log_std_init=0.0,)
+
+    model = PPO(
+    policy="MlpPolicy",
+    env=gym_env,
+    learning_rate=0.0006,
+    n_steps=48 * args.num_envs // 4,  # derived from RSL-RL config
+    batch_size=48 * args.num_envs // 4,
+    n_epochs=5,
+    gamma=0.99,
+    gae_lambda=0.95,
+    clip_range=0.2,
+    clip_range_vf=0.2,
+    ent_coef=0.01,
+    vf_coef=1.0,
+    target_kl=0.03,
+    max_grad_norm=1.0,
+    policy_kwargs=policy_kwargs,
+    verbose=1,
+    normalize_advantage=False,
+)
 
             
 
     # Train the model
-    total_timesteps = 100000
+    total_timesteps = 5000000
     model.learn(total_timesteps=total_timesteps)
 
     # Save the model
