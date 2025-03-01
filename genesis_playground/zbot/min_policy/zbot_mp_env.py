@@ -230,15 +230,16 @@ class ZbotEnv:
         # compute observations
         self.obs_buf = torch.cat(
             [
-                # try removing angular velocity as inputs
-                # self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                # Restore angular velocity inputs
+                self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
                 self.projected_gravity,  # 3
-                self.commands * self.commands_scale,  # 3
-                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
-                self.dof_vel * self.obs_scales["dof_vel"],  # 12
-                self.actions,  # 12
+                # Remove command inputs
+                # self.commands * self.commands_scale,  # 3
+                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
+                self.dof_vel * self.obs_scales["dof_vel"],  # 10
+                self.actions,  # 10
             ],
-            axis=-1,
+        axis=-1,
         )
 
         self.last_actions[:] = self.actions[:]
