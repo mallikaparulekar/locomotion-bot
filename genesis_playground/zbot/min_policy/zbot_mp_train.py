@@ -117,7 +117,7 @@ def get_cfgs():
         "max_torque": 10.0,
     }
     obs_cfg = {
-        "num_obs": 36,  # Updated number of observations
+        "num_obs": 36,  # Updated number of observations 
         "obs_scales": {
             "lin_vel": 2.0,
             "ang_vel": 0.25,

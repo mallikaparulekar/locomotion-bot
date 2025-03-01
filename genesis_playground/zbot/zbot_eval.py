@@ -152,7 +152,7 @@ def main():
     with torch.no_grad():
         gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
         if args.show_viewer:
-            env.scene.viewer.start()  # Explicit start for viewer (on Macbook)
+            env.scene.viewer.start()  # Explicit start for viewer 
         
 if __name__ == "__main__":
     main()
