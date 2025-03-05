@@ -159,19 +159,94 @@ def get_cfgs():
     return env_cfg, obs_cfg, reward_cfg, command_cfg
 
 class WandbOnPolicyRunner(OnPolicyRunner):
+    def __init__(self, env, train_cfg, log_dir, device="cpu", mode="default"):
+        super().__init__(env, train_cfg, log_dir, device)
+        self.mode = mode  # Store the mode parameter
+
     def log(self, info):
         super().log(info)
-        # Log metrics to wandb
+        
+        # Skip logging if this is just initialization (no training metrics yet)
+        if 'it' not in info or info['it'] == 0:
+            return
+        
+        # Basic metrics that are always available
         metrics = {
-            'train/rew_tracking_lin_vel': info['train/rew_tracking_lin_vel'],
-            'train/rew_tracking_ang_vel': info['train/rew_tracking_ang_vel'],
-            'train/rew_lin_vel_z': info['train/rew_lin_vel_z'],
-            'train/rew_base_height': info['train/rew_base_height'],
-            'train/rew_action_rate': info['train/rew_action_rate'],
-            'train/rew_similar_to_default': info['train/rew_similar_to_default'],
+            'train/iteration': info['it']
         }
+        
+        # Convert deque objects to numpy arrays for mean calculation
+        if 'rewbuffer' in info:
+            if hasattr(info['rewbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_reward'] = info['rewbuffer'].mean().item()
+            else:  # If it's a deque
+                rewards = list(info['rewbuffer'])
+                if rewards:
+                    metrics['train/mean_reward'] = sum(rewards) / len(rewards)
+        
+        if 'lenbuffer' in info:
+            if hasattr(info['lenbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_episode_length'] = info['lenbuffer'].mean().item()
+            else:  # If it's a deque
+                lengths = list(info['lenbuffer'])
+                if lengths:
+                    metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
+        
+        # Add policy training metrics if available
+        if 'mean_value_loss' in info:
+            metrics['train/value_loss'] = info['mean_value_loss']
+        if 'mean_surrogate_loss' in info:
+            metrics['train/policy_loss'] = info['mean_surrogate_loss']
+        
+        # Try to extract reward components from ep_infos
+        if 'ep_infos' in info and len(info['ep_infos']) > 0:
+            reward_components = {}
+            
+            for ep_info in info['ep_infos']:
+                if isinstance(ep_info, dict) and "episode" in ep_info:
+                    episode_data = ep_info["episode"]
+                    for key, value in episode_data.items():
+                        if key.startswith("rew_"):
+                            if key not in reward_components:
+                                reward_components[key] = []
+                            reward_components[key].append(value)
+            
+            # Average reward components
+            for key, values in reward_components.items():
+                if values:  # Check if list is not empty
+                    metrics[f"train/{key}"] = sum(values) / len(values)
+        
+        # Print and log the metrics
+        print(f"Logging metrics to wandb: {metrics}")
         wandb.log(metrics)
 
+    def learn(self, num_learning_iterations, init_at_random_ep_len=True):
+        if self.mode == "default":
+            # Run standard learning
+            super().learn(num_learning_iterations, init_at_random_ep_len)
+        elif self.mode == "reload_urdf":
+            urdfs_paths = self.get_urdfs_paths()
+            # train for an equal number of iterations for each URDF
+            num_iterations_per_urdf = num_learning_iterations // len(urdfs_paths)
+            for iteration in range(num_learning_iterations):
+                # if iteration % num_iterations_per_urdf == 0:
+                #     print(f"\n=== Reloading robot URDF at iteration {iteration} ===")
+                #     self.env.update_robot_link_masses(urdfs_paths[iteration // num_iterations_per_urdf]) 
+                super().learn(1, init_at_random_ep_len)
+
+
+
+            # Reload URDF every 45 iterations while keeping training progress
+            # for iteration in range(num_learning_iterations):
+            #     if iteration % 45 == 0 and iteration > 0:
+            #         print(f"\n=== Reloading robot URDF at iteration {iteration} ===")
+            #         self.env.update_robot_urdf(iteration)  # Change URDF in-place
+            #     super().learn(1, init_at_random_ep_len)
+
+    def get_urdfs_paths(self):
+        urdf_paths = ["genesis_playground/resources/zbot/robot_fixed_noisy_{}.urdf".format(i) for i in range(1)]
+        return urdf_paths
+            
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking")
@@ -226,9 +301,11 @@ def main():
                     "train_cfg": train_cfg,
                 }
         )
-        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device, mode="reload_urdf")
     else:
-        runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+        # runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+        # throw an error saying wandb must be enable
+        raise ValueError("Wandb must be enabled")
 
     try:
         runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)

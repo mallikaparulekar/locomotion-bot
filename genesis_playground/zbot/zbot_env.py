@@ -4,6 +4,7 @@ import math
 import numpy as np
 import genesis as gs
 from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
+from edit_urdf_scripts import extract_link_masses
 
 
 def gs_rand_float(lower, upper, shape, device):
@@ -146,6 +147,17 @@ class ZbotEnv:
         self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["lin_vel_x_range"], (len(envs_idx),), self.device)
         self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
         self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
+
+    def update_robot_link_masses(self, urdf_path):
+        print(dir(self.robot.links[0])) 
+        link_masses = extract_link_masses(urdf_path)
+        for link in self.robot.links:
+            link_name = link.name
+            print(link_name)
+            if link_name in link_masses:
+                link.set_mass(link_masses[link_name])
+         
+
 
     def step(self, actions):
         self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
