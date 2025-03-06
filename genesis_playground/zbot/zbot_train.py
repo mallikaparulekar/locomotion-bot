@@ -161,15 +161,59 @@ def get_cfgs():
 class WandbOnPolicyRunner(OnPolicyRunner):
     def log(self, info):
         super().log(info)
-        # Log metrics to wandb
+        
+        # Skip logging if this is just initialization (no training metrics yet)
+        if 'it' not in info or info['it'] == 0:
+            return
+        
+        # Basic metrics that are always available
         metrics = {
-            'train/rew_tracking_lin_vel': info['train/rew_tracking_lin_vel'],
-            'train/rew_tracking_ang_vel': info['train/rew_tracking_ang_vel'],
-            'train/rew_lin_vel_z': info['train/rew_lin_vel_z'],
-            'train/rew_base_height': info['train/rew_base_height'],
-            'train/rew_action_rate': info['train/rew_action_rate'],
-            'train/rew_similar_to_default': info['train/rew_similar_to_default'],
+            'train/iteration': info['it']
         }
+        
+        # Convert deque objects to numpy arrays for mean calculation
+        if 'rewbuffer' in info:
+            if hasattr(info['rewbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_reward'] = info['rewbuffer'].mean().item()
+            else:  # If it's a deque
+                rewards = list(info['rewbuffer'])
+                if rewards:
+                    metrics['train/mean_reward'] = sum(rewards) / len(rewards)
+        
+        if 'lenbuffer' in info:
+            if hasattr(info['lenbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_episode_length'] = info['lenbuffer'].mean().item()
+            else:  # If it's a deque
+                lengths = list(info['lenbuffer'])
+                if lengths:
+                    metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
+        
+        # Add policy training metrics if available
+        if 'mean_value_loss' in info:
+            metrics['train/value_loss'] = info['mean_value_loss']
+        if 'mean_surrogate_loss' in info:
+            metrics['train/policy_loss'] = info['mean_surrogate_loss']
+        
+        # Try to extract reward components from ep_infos
+        if 'ep_infos' in info and len(info['ep_infos']) > 0:
+            reward_components = {}
+            
+            for ep_info in info['ep_infos']:
+                if isinstance(ep_info, dict) and "episode" in ep_info:
+                    episode_data = ep_info["episode"]
+                    for key, value in episode_data.items():
+                        if key.startswith("rew_"):
+                            if key not in reward_components:
+                                reward_components[key] = []
+                            reward_components[key].append(value)
+            
+            # Average reward components
+            for key, values in reward_components.items():
+                if values:  # Check if list is not empty
+                    metrics[f"train/{key}"] = sum(values) / len(values)
+        
+        # Print and log the metrics
+        print(f"Logging metrics to wandb: {metrics}")
         wandb.log(metrics)
 
 def main():
@@ -214,7 +258,7 @@ def main():
         run = wandb.init(
                 project=args.exp_name,
                 entity=args.wandb_entity,
-                name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                name=args.exp_name,
                 config={
                     "num_envs": args.num_envs,
                     "max_iterations": args.max_iterations,
