@@ -97,13 +97,13 @@ def get_cfgs():
         # friction
         "env_friction_range": {
             "start": [0.9, 1.1],
-            "end": [0.9, 1.1],
+            "end": [0.8, 1.2], # Original [0.9, 1.1]
         },
         # link mass
         # varying this too much collapses the training (IMPORTANT TO DISCUSS)
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
-            "end": [1.0, 1.0],
+            "end": [0.9, 1.1], # Original [1.0, 1.0]
         },
         # RFI
         "rfi_scale": 0.1,
@@ -127,7 +127,7 @@ def get_cfgs():
     }
     obs_cfg = {
         # need to update whenever a minimal policy is used
-        "num_obs": 36, # original 39
+        "num_obs": 39, # original 39
         # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,

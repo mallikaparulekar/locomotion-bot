@@ -56,6 +56,7 @@ class ZbotEnv:
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=80,
+                res = (1600, 1200), # set window size
             ),
             vis_options=gs.options.VisOptions(n_rendered_envs=1),
             rigid_options=gs.options.RigidOptions(
@@ -231,7 +232,7 @@ class ZbotEnv:
         # Minimal Policy Version 1: No actions (-10)
         self.obs_buf = torch.cat(
             [
-                # self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
                 self.projected_gravity,  # 3
                 self.commands * self.commands_scale,  # 3
                 (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
