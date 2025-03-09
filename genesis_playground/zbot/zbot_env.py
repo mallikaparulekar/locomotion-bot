@@ -3,6 +3,7 @@ import torch
 import math
 import numpy as np
 import genesis as gs
+from collections import deque
 from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
 
 
@@ -22,6 +23,37 @@ def get_from_curriculum(curriculum, t, max_t):
     max_end = curriculum["end"][1]
     min_value = linear_interpolation(min_start, min_end, t, max_t)
     max_value = linear_interpolation(max_start, max_end, t, max_t)
+    return np.random.uniform(min_value, max_value)
+
+def get_from_curriculum_performance_based(curriculum, avg_reward, min_reward_threshold, target_reward):
+    """
+    Performance-based curriculum learning that adjusts difficulty based on recent reward performance.
+    
+    Parameters:
+    - curriculum: Dictionary with 'start' and 'end' ranges
+    - avg_reward: Current average reward (higher means better performance)
+    - min_reward_threshold: Minimum reward needed before increasing difficulty
+    - target_reward: Reward value that represents mastery (will use max difficulty)
+    
+    Returns:
+    - A sampled value from the appropriate difficulty range
+    """
+    # If reward is below threshold, stay at easiest setting
+    if avg_reward < min_reward_threshold:
+        return np.random.uniform(curriculum["start"][0], curriculum["start"][1])
+    
+    # Calculate progress based on how far reward is between threshold and target
+    # This maps reward from [min_threshold, target] to progress [0, 1]
+    progress = min(1.0, (avg_reward - min_reward_threshold) / (target_reward - min_reward_threshold))
+    
+    # Apply a smoothing function to avoid abrupt changes
+    # This creates a more gradual increase in difficulty
+    smoothed_progress = progress * progress  # Quadratic smoothing (slower at start, faster at end)
+    
+    # Interpolate between start and end ranges based on progress
+    min_value = curriculum["start"][0] + (curriculum["end"][0] - curriculum["start"][0]) * smoothed_progress
+    max_value = curriculum["start"][1] + (curriculum["end"][1] - curriculum["start"][1]) * smoothed_progress
+    
     return np.random.uniform(min_value, max_value)
 
 class ZbotEnv:
@@ -52,11 +84,11 @@ class ZbotEnv:
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2), # substep=2 for 50hz
             viewer_options=gs.options.ViewerOptions(
+                res=(1280, 720),  # Set resolution to 1280x720
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=80,
-                res = (1600, 1200), # set window size
             ),
             vis_options=gs.options.VisOptions(n_rendered_envs=1),
             rigid_options=gs.options.RigidOptions(
@@ -142,6 +174,16 @@ class ZbotEnv:
             dtype=gs.tc_float,
         )
         self.extras = dict()  # extra information for logging
+        
+        # Add reward tracking for curriculum learning
+        self.reward_history = deque(maxlen=100)  # Store last 100 episode rewards
+        self.avg_episode_reward = 0.0  # Average episode reward
+        self.min_reward_threshold = 5.0  # Minimum mean reward before increasing difficulty
+        self.target_reward = 9.0  # Target mean reward representing mastery
+        
+        # Store current curriculum values for logging
+        self.current_friction = 1.0
+        self.current_mass_mult = 1.0
 
     def _resample_commands(self, envs_idx):
         self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["lin_vel_x_range"], (len(envs_idx),), self.device)
@@ -228,8 +270,7 @@ class ZbotEnv:
             self.rew_buf += rew
             self.episode_sums[name] += rew
 
-        # compute observations - total 39
-        # Minimal Policy Version 1: No actions (-10)
+        # compute observations
         self.obs_buf = torch.cat(
             [
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
@@ -241,6 +282,13 @@ class ZbotEnv:
             ],
             axis=-1,
         )
+
+        # Add curriculum info to extras for logging
+        self.extras["curriculum"] = {
+            "mean_reward": float(self.avg_episode_reward),
+            "current_friction": float(self.current_friction),
+            "current_mass_mult": float(self.current_mass_mult),
+        }
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
@@ -257,6 +305,27 @@ class ZbotEnv:
     def reset_idx(self, envs_idx):
         if len(envs_idx) == 0:
             return
+            
+        # Track episode rewards for curriculum learning
+        if len(envs_idx) > 0:
+            # Calculate mean reward for completed episodes
+            episode_mean_rewards = []
+            for idx in envs_idx:
+                # Sum all reward components to get episode mean reward
+                episode_mean_reward = 0
+                for name in self.episode_sums.keys():
+                    episode_mean_reward += self.episode_sums[name][idx].item()
+                episode_mean_rewards.append(episode_mean_reward)
+            
+            if episode_mean_rewards:
+                avg_episode_reward = sum(episode_mean_rewards) / len(episode_mean_rewards)
+                self.reward_history.append(avg_episode_reward)
+                
+            if len(self.reward_history) > 0:
+                self.avg_episode_reward = sum(self.reward_history) / len(self.reward_history)
+                # Print for debugging
+                print(f"Current curriculum mean reward: {self.avg_episode_reward:.4f}, threshold: {self.min_reward_threshold}")
+        
         # Sample uniform multipliers between min and max
         kp_mult = gs_rand_float(
             self.env_cfg["kp_multipliers"][0],
@@ -287,13 +356,32 @@ class ZbotEnv:
         self.robot.set_dofs_kp(kp_values, self.motor_dofs)
         self.robot.set_dofs_kv(kd_values, self.motor_dofs)
         
-        # friction
-        friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
+        # ORIGINAL CURRICULUM (comment one of these sections)
+        # friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
+        # link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
+        
+        # PERFORMANCE-BASED CURRICULUM (uncomment to use)
+        friction = get_from_curriculum_performance_based(
+            self.env_cfg["env_friction_range"], 
+            self.avg_episode_reward,
+            self.min_reward_threshold,
+            self.target_reward
+        )
+        link_mass_mult = get_from_curriculum_performance_based(
+            self.env_cfg["link_mass_multipliers"], 
+            self.avg_episode_reward,
+            self.min_reward_threshold,
+            self.target_reward
+        )
+        
+        # Store current values for logging
+        self.current_friction = friction
+        self.current_mass_mult = link_mass_mult
+        
         self.robot.set_friction(friction)
         self.plane.set_friction(friction)
         
         # link mass
-        link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
         for link in self.robot.links:
             link.set_mass(link.get_mass() * link_mass_mult)
 

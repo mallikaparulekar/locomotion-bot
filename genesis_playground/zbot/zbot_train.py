@@ -162,42 +162,55 @@ def get_cfgs():
 class WandbOnPolicyRunner(OnPolicyRunner):
     def log(self, info):
         super().log(info)
-
-        # Skip logging if this is just initialization
+        
+        # Skip logging if this is just initialization (no training metrics yet)
         if 'it' not in info or info['it'] == 0:
             return
-
-        # Basic metrics
-        metrics = {'train/iteration': info['it']}
-
-        # Mean reward tracking
+        
+        # Basic metrics that are always available
+        metrics = {
+            'train/iteration': info['it']
+        }
+        
+        # Convert deque objects to numpy arrays for mean calculation
         if 'rewbuffer' in info:
-            rewards = list(info['rewbuffer'])
-            if rewards:
-                metrics['train/mean_reward'] = sum(rewards) / len(rewards)
-
-        # Mean episode length
+            if hasattr(info['rewbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_reward'] = info['rewbuffer'].mean().item()
+            else:  # If it's a deque
+                rewards = list(info['rewbuffer'])
+                if rewards:
+                    metrics['train/mean_reward'] = sum(rewards) / len(rewards)
+        
         if 'lenbuffer' in info:
-            lengths = list(info['lenbuffer'])
-            if lengths:
-                metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
-
-        # Add policy training metrics
+            if hasattr(info['lenbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_episode_length'] = info['lenbuffer'].mean().item()
+            else:  # If it's a deque
+                lengths = list(info['lenbuffer'])
+                if lengths:
+                    metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
+        
+        # Add policy training metrics if available
         if 'mean_value_loss' in info:
             metrics['train/value_loss'] = info['mean_value_loss']
         if 'mean_surrogate_loss' in info:
             metrics['train/policy_loss'] = info['mean_surrogate_loss']
-        if 'mean_entropy' in info:
-            metrics['train/entropy'] = info['mean_entropy']
-
-        # Add learning rate logging
-        metrics['train/learning_rate'] = self.alg.learning_rate  # Read from PPO
-
-        # Ensure x-axis in Weights & Biases shows iteration
-        wandb.log(metrics, step=info['it'])
-
-        # Print for debugging
+            
+        # Add learning rate
+        metrics['train/learning_rate'] = self.alg.learning_rate
+        
+        # Add curriculum metrics if available in extras
+        if hasattr(self.env, 'extras') and 'curriculum' in self.env.extras:
+            curriculum_data = self.env.extras['curriculum']
+            if 'mean_reward' in curriculum_data:
+                metrics['curriculum/mean_reward'] = curriculum_data['mean_reward']
+            if 'current_friction' in curriculum_data:
+                metrics['curriculum/friction'] = curriculum_data['current_friction']
+            if 'current_mass_mult' in curriculum_data:
+                metrics['curriculum/mass_mult'] = curriculum_data['current_mass_mult']
+        
+        # Print and log the metrics
         print(f"Logging metrics to wandb: {metrics}")
+        wandb.log(metrics)
 
 
 
