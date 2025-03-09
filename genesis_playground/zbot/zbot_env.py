@@ -227,15 +227,16 @@ class ZbotEnv:
             self.rew_buf += rew
             self.episode_sums[name] += rew
 
-        # compute observations
+        # compute observations - total 39
+        # Minimal Policy Version 1: No actions (-10)
         self.obs_buf = torch.cat(
             [
-                self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                # self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
                 self.projected_gravity,  # 3
                 self.commands * self.commands_scale,  # 3
-                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
-                self.dof_vel * self.obs_scales["dof_vel"],  # 12
-                self.actions,  # 12
+                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
+                self.dof_vel * self.obs_scales["dof_vel"],  # 10
+                self.actions,  # 10
             ],
             axis=-1,
         )

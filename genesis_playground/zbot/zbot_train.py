@@ -100,7 +100,7 @@ def get_cfgs():
             "end": [0.9, 1.1],
         },
         # link mass
-        # varying this too much collapses the training
+        # varying this too much collapses the training (IMPORTANT TO DISCUSS)
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
             "end": [1.0, 1.0],
@@ -126,7 +126,8 @@ def get_cfgs():
         "max_torque": 10.0,
     }
     obs_cfg = {
-        "num_obs": 39,
+        # need to update whenever a minimal policy is used
+        "num_obs": 36, # original 39
         # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,
@@ -161,60 +162,45 @@ def get_cfgs():
 class WandbOnPolicyRunner(OnPolicyRunner):
     def log(self, info):
         super().log(info)
-        
-        # Skip logging if this is just initialization (no training metrics yet)
+
+        # Skip logging if this is just initialization
         if 'it' not in info or info['it'] == 0:
             return
-        
-        # Basic metrics that are always available
-        metrics = {
-            'train/iteration': info['it']
-        }
-        
-        # Convert deque objects to numpy arrays for mean calculation
+
+        # Basic metrics
+        metrics = {'train/iteration': info['it']}
+
+        # Mean reward tracking
         if 'rewbuffer' in info:
-            if hasattr(info['rewbuffer'], 'mean'):  # If it's a tensor or similar
-                metrics['train/mean_reward'] = info['rewbuffer'].mean().item()
-            else:  # If it's a deque
-                rewards = list(info['rewbuffer'])
-                if rewards:
-                    metrics['train/mean_reward'] = sum(rewards) / len(rewards)
-        
+            rewards = list(info['rewbuffer'])
+            if rewards:
+                metrics['train/mean_reward'] = sum(rewards) / len(rewards)
+
+        # Mean episode length
         if 'lenbuffer' in info:
-            if hasattr(info['lenbuffer'], 'mean'):  # If it's a tensor or similar
-                metrics['train/mean_episode_length'] = info['lenbuffer'].mean().item()
-            else:  # If it's a deque
-                lengths = list(info['lenbuffer'])
-                if lengths:
-                    metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
-        
-        # Add policy training metrics if available
+            lengths = list(info['lenbuffer'])
+            if lengths:
+                metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
+
+        # Add policy training metrics
         if 'mean_value_loss' in info:
             metrics['train/value_loss'] = info['mean_value_loss']
         if 'mean_surrogate_loss' in info:
             metrics['train/policy_loss'] = info['mean_surrogate_loss']
-        
-        # Try to extract reward components from ep_infos
-        if 'ep_infos' in info and len(info['ep_infos']) > 0:
-            reward_components = {}
-            
-            for ep_info in info['ep_infos']:
-                if isinstance(ep_info, dict) and "episode" in ep_info:
-                    episode_data = ep_info["episode"]
-                    for key, value in episode_data.items():
-                        if key.startswith("rew_"):
-                            if key not in reward_components:
-                                reward_components[key] = []
-                            reward_components[key].append(value)
-            
-            # Average reward components
-            for key, values in reward_components.items():
-                if values:  # Check if list is not empty
-                    metrics[f"train/{key}"] = sum(values) / len(values)
-        
-        # Print and log the metrics
+        if 'mean_entropy' in info:
+            metrics['train/entropy'] = info['mean_entropy']
+
+        # Add learning rate logging
+        metrics['train/learning_rate'] = self.alg.learning_rate  # Read from PPO
+
+        # Ensure x-axis in Weights & Biases shows iteration
+        wandb.log(metrics, step=info['it'])
+
+        # Print for debugging
         print(f"Logging metrics to wandb: {metrics}")
-        wandb.log(metrics)
+
+
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -225,6 +211,8 @@ def main():
     parser.add_argument("--show_viewer", type=bool, default=False)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--use_wandb", type=bool, default=False)
+    parser.add_argument("--wandb_project", type=str, default="zbot-walking", help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="WandB run name. If None, will use exp_name")
     parser.add_argument("--from_checkpoint", type=bool, default=False)
     args = parser.parse_args()
     
@@ -256,9 +244,10 @@ def main():
     
     if args.use_wandb:
         run = wandb.init(
-                project=args.exp_name,
+                project=args.wandb_project,  # Use wandb_project instead of exp_name for project
                 entity=args.wandb_entity,
-                name=args.exp_name,
+                name=args.wandb_run_name if args.wandb_run_name else f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",  # Add timestamp to run name
+                group=args.exp_name,  # Use exp_name as group name
                 config={
                     "num_envs": args.num_envs,
                     "max_iterations": args.max_iterations,
