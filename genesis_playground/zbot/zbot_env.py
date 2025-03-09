@@ -26,10 +26,16 @@ def get_from_curriculum(curriculum, t, max_t):
     return np.random.uniform(min_value, max_value)
 
 class ZbotEnv:
-    def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="mps"):
+    def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, total_iterations, num_steps_per_env, show_viewer=False, device="mps"):
+        # added by mallika
+        # self.urdf_files = ["genesis_playground/resources/zbot/robot_fixed_noisy_{}.urdf".format(i) for i in range(1)]
+        self.urdf_files = ["genesis_playground/resources/zbot/robot_fixed.urdf"]
+        self.current_urdf = ""
+
         self.device = torch.device(device)
         self.total_steps = 0
-        self.max_steps = 40_000_000
+        # self.max_steps = 40_000_000
+        self.max_steps = num_envs * total_iterations * num_steps_per_env
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -149,14 +155,12 @@ class ZbotEnv:
         self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
 
     def update_robot_link_masses(self, urdf_path):
-        print(dir(self.robot.links[0])) 
         link_masses = extract_link_masses(urdf_path)
         for link in self.robot.links:
             link_name = link.name
-            print(link_name)
             if link_name in link_masses:
                 link.set_mass(link_masses[link_name])
-         
+        
 
 
     def step(self, actions):
@@ -245,9 +249,9 @@ class ZbotEnv:
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
                 self.projected_gravity,  # 3
                 self.commands * self.commands_scale,  # 3
-                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
-                self.dof_vel * self.obs_scales["dof_vel"],  # 12
-                self.actions,  # 12
+                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
+                self.dof_vel * self.obs_scales["dof_vel"],  # 10
+                self.actions,  # 10
             ],
             axis=-1,
         )
@@ -303,10 +307,20 @@ class ZbotEnv:
         self.plane.set_friction(friction)
         
         # link mass
-        link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
-        for link in self.robot.links:
-            link.set_mass(link.get_mass() * link_mass_mult)
+        # link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
+        # for link in self.robot.links:
+        #     link.set_mass(link.get_mass() * link_mass_mult)
 
+        # change link mass from robot in urdf
+
+        # assign urdf pathy based on how many total urdf files are there and what proportion of iterations have passed
+
+        urdf_path_idx = len(self.urdf_files) * self.total_steps // self.max_steps
+        if (self.current_urdf != self.urdf_files[urdf_path_idx]):
+            self.current_urdf = self.urdf_files[urdf_path_idx]
+            print("UPDATING URDF TO: ", self.current_urdf)  
+            self.update_robot_link_masses(self.urdf_files[urdf_path_idx])
+     
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
         self.dof_vel[envs_idx] = 0.0

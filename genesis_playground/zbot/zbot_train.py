@@ -220,36 +220,9 @@ class WandbOnPolicyRunner(OnPolicyRunner):
         print(f"Logging metrics to wandb: {metrics}")
         wandb.log(metrics)
 
-    def learn(self, num_learning_iterations, init_at_random_ep_len=True):
-        if self.mode == "default":
-            # Run standard learning
-            super().learn(num_learning_iterations, init_at_random_ep_len)
-        elif self.mode == "reload_urdf":
-            urdfs_paths = self.get_urdfs_paths()
-            # train for an equal number of iterations for each URDF
-            num_iterations_per_urdf = num_learning_iterations // len(urdfs_paths)
-            for iteration in range(num_learning_iterations):
-                # if iteration % num_iterations_per_urdf == 0:
-                #     print(f"\n=== Reloading robot URDF at iteration {iteration} ===")
-                #     self.env.update_robot_link_masses(urdfs_paths[iteration // num_iterations_per_urdf]) 
-                super().learn(1, init_at_random_ep_len)
-
-
-
-            # Reload URDF every 45 iterations while keeping training progress
-            # for iteration in range(num_learning_iterations):
-            #     if iteration % 45 == 0 and iteration > 0:
-            #         print(f"\n=== Reloading robot URDF at iteration {iteration} ===")
-            #         self.env.update_robot_urdf(iteration)  # Change URDF in-place
-            #     super().learn(1, init_at_random_ep_len)
-
-    def get_urdfs_paths(self):
-        urdf_paths = ["genesis_playground/resources/zbot/robot_fixed_noisy_{}.urdf".format(i) for i in range(1)]
-        return urdf_paths
-            
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking")
+    parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking-og-urdf")
     parser.add_argument("-B", "--num_envs", type=int, default=10)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--device", type=str, default="mps")
@@ -276,6 +249,8 @@ def main():
         obs_cfg=obs_cfg, 
         reward_cfg=reward_cfg, 
         command_cfg=command_cfg, 
+        total_iterations = args.max_iterations,
+        num_steps_per_env=train_cfg["runner"]["num_steps_per_env"],
         device=args.device,
         show_viewer=args.show_viewer,
     )
@@ -287,7 +262,7 @@ def main():
     
     if args.use_wandb:
         run = wandb.init(
-                project=args.exp_name,
+                project="zbot-walking-changing-urdf-reset",
                 entity=args.wandb_entity,
                 name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 config={
@@ -301,7 +276,7 @@ def main():
                     "train_cfg": train_cfg,
                 }
         )
-        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device, mode="reload_urdf")
+        runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     else:
         # runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
         # throw an error saying wandb must be enable

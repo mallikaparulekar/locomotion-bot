@@ -67,8 +67,8 @@ def create_multiple_urdfs(original_urdf, new_urdf_prefix, num_urdfs, mean=0, std
 create_multiple_urdfs(
     "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed.urdf",
     "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed_noisy",
-    1,
-    mean=0,
+    20,
+    mean=0.05,
     std_dev=0
 )
 
