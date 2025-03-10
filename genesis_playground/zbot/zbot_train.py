@@ -103,7 +103,7 @@ def get_cfgs():
         # varying this too much collapses the training (IMPORTANT TO DISCUSS)
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
-            "end": [0.9, 1.1], # Original [1.0, 1.0]
+            "end": [0.97, 1.03], # Original [1.0, 1.0], Other [0.9, 1.1]
         },
         # RFI
         "rfi_scale": 0.1,
@@ -127,7 +127,7 @@ def get_cfgs():
     }
     obs_cfg = {
         # need to update whenever a minimal policy is used
-        "num_obs": 39, # original 39
+        "num_obs": 29, # original 39
         # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,

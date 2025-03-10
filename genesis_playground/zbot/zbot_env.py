@@ -178,8 +178,8 @@ class ZbotEnv:
         # Add reward tracking for curriculum learning
         self.reward_history = deque(maxlen=100)  # Store last 100 episode rewards
         self.avg_episode_reward = 0.0  # Average episode reward
-        self.min_reward_threshold = 5.0  # Minimum mean reward before increasing difficulty
-        self.target_reward = 9.0  # Target mean reward representing mastery
+        self.min_reward_threshold = 6.0  # Minimum mean reward before increasing difficulty
+        self.target_reward = 12.0  # Target mean reward representing mastery
         
         # Store current curriculum values for logging
         self.current_friction = 1.0
@@ -278,7 +278,7 @@ class ZbotEnv:
                 self.commands * self.commands_scale,  # 3
                 (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
                 self.dof_vel * self.obs_scales["dof_vel"],  # 10
-                self.actions,  # 10
+                # self.actions,  # 10
             ],
             axis=-1,
         )
@@ -384,6 +384,7 @@ class ZbotEnv:
         # link mass
         for link in self.robot.links:
             link.set_mass(link.get_mass() * link_mass_mult)
+            # print(f"Link {link.name} mass: {link.get_mass()}")
 
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
