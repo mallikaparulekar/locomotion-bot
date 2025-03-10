@@ -70,29 +70,55 @@ def get_cfgs():
         "num_actions": 10,
         # joint/link names
         # NOTE: hip roll/yaw flipped between sim & real robot FIXME
-        "default_joint_angles": {  # [rad]
-            "R_Hip_Pitch": 0.0,
-            "L_Hip_Pitch": 0.0,
-            "R_Hip_Yaw": 0.0,
-            "L_Hip_Yaw": 0.0,
-            "R_Hip_Roll": 0.0,
-            "L_Hip_Roll": 0.0,
-            "R_Knee_Pitch": 0.0,
-            "L_Knee_Pitch": 0.0,
-            "R_Ankle_Pitch": 0.0,
-            "L_Ankle_Pitch": 0.0,
-        },
-        "dof_names": [
-            "R_Hip_Pitch",
-            "L_Hip_Pitch",
-            "R_Hip_Yaw",
-            "L_Hip_Yaw",
-            "R_Hip_Roll",
-            "L_Hip_Roll",
-            "R_Knee_Pitch",
-            "L_Knee_Pitch",
-            "R_Ankle_Pitch",
-            "L_Ankle_Pitch",
+        # "default_joint_angles": {  # [rad]
+        #     "R_Hip_Pitch": 0.0,
+        #     "L_Hip_Pitch": 0.0,
+        #     "R_Hip_Yaw": 0.0,
+        #     "L_Hip_Yaw": 0.0,
+        #     "R_Hip_Roll": 0.0,
+        #     "L_Hip_Roll": 0.0,
+        #     "R_Knee_Pitch": 0.0,
+        #     "L_Knee_Pitch": 0.0,
+        #     "R_Ankle_Pitch": 0.0,
+        #     "L_Ankle_Pitch": 0.0,
+        # },
+
+         "default_joint_angles": {
+            "right_hip_pitch": 0.0,
+            "left_hip_pitch": 0.0,
+            "right_hip_yaw": 0.0,
+            "left_hip_yaw": 0.0,
+            "right_hip_roll": 0.0,
+            "left_hip_roll": 0.0,
+            "right_knee": 0.0,
+            "left_knee": 0.0,
+            "right_ankle": 0.0,
+            "left_ankle": 0.0,
+    },
+   
+        # "dof_names": [
+        #     "R_Hip_Pitch",
+        #     "L_Hip_Pitch",
+        #     "R_Hip_Yaw",
+        #     "L_Hip_Yaw",
+        #     "R_Hip_Roll",
+        #     "L_Hip_Roll",
+        #     "R_Knee_Pitch",
+        #     "L_Knee_Pitch",
+        #     "R_Ankle_Pitch",
+        #     "L_Ankle_Pitch",
+        # ],
+         "dof_names": [
+            "right_hip_pitch",
+            "left_hip_pitch",
+            "right_hip_yaw",
+            "left_hip_yaw",
+            "right_hip_roll",
+            "left_hip_roll",
+            "right_knee",
+            "left_knee",
+            "right_ankle",
+            "left_ankle",
         ],
         # friction
         "env_friction_range": {
@@ -222,7 +248,7 @@ class WandbOnPolicyRunner(OnPolicyRunner):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="zbot-walking-og-urdf")
+    parser.add_argument("-e", "--exp_name", type=str, default="new-zbot-default-env")
     parser.add_argument("-B", "--num_envs", type=int, default=10)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--device", type=str, default="mps")
@@ -262,7 +288,7 @@ def main():
     
     if args.use_wandb:
         run = wandb.init(
-                project="zbot-walking-changing-urdf-reset",
+                project="new-zbot-urdfs-exps",
                 entity=args.wandb_entity,
                 name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 config={

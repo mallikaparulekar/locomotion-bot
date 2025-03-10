@@ -28,8 +28,9 @@ def get_from_curriculum(curriculum, t, max_t):
 class ZbotEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, total_iterations, num_steps_per_env, show_viewer=False, device="mps"):
         # added by mallika
-        # self.urdf_files = ["genesis_playground/resources/zbot/robot_fixed_noisy_{}.urdf".format(i) for i in range(1)]
-        self.urdf_files = ["genesis_playground/resources/zbot/robot_fixed.urdf"]
+        # self.urdf_files = ["genesis_playground/resources/zbot/robot_fixed_
+        # _{}.urdf".format(i) for i in range(1)]
+        self.urdf_files = ["genesis_playground/resources/zbot/zbot_v2_fixed.urdf"]
         self.current_urdf = ""
 
         self.device = torch.device(device)
@@ -83,7 +84,8 @@ class ZbotEnv:
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="genesis_playground/resources/zbot/robot_fixed.urdf",
+                # file="genesis_playground/resources/zbot/robot_fixed.urdf",
+                file="genesis_playground/resources/zbot/zbot_v2_fixed.urdf",
                 pos=self.base_init_pos.cpu().numpy(),
                 quat=self.base_init_quat.cpu().numpy(),
             ),
@@ -154,11 +156,15 @@ class ZbotEnv:
         self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
         self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
 
+
     def update_robot_link_masses(self, urdf_path):
         link_masses = extract_link_masses(urdf_path)
+        print("all link masses: ", link_masses)
+        print("all link names in robot: ", [link.name for link in self.robot.links])
         for link in self.robot.links:
             link_name = link.name
-            if link_name in link_masses:
+            if link_name in ["FOOT", "FOOT_2"]:
+                print("UPDATING LINK MASS for: ", link_name, " FROM: ", link.get_mass(), " TO: ", link_masses[link_name])
                 link.set_mass(link_masses[link_name])
         
 
@@ -315,11 +321,11 @@ class ZbotEnv:
 
         # assign urdf pathy based on how many total urdf files are there and what proportion of iterations have passed
 
-        urdf_path_idx = len(self.urdf_files) * self.total_steps // self.max_steps
-        if (self.current_urdf != self.urdf_files[urdf_path_idx]):
-            self.current_urdf = self.urdf_files[urdf_path_idx]
-            print("UPDATING URDF TO: ", self.current_urdf)  
-            self.update_robot_link_masses(self.urdf_files[urdf_path_idx])
+        # urdf_path_idx = len(self.urdf_files) * self.total_steps // self.max_steps
+        # if (self.current_urdf != self.urdf_files[urdf_path_idx]):
+        #     self.current_urdf = self.urdf_files[urdf_path_idx]
+        #     print("UPDATING URDF TO: ", self.current_urdf)  
+        #     self.update_robot_link_masses(self.urdf_files[urdf_path_idx])
      
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos

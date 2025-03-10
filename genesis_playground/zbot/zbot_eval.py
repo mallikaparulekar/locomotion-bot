@@ -133,6 +133,8 @@ def main():
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
+        total_iterations=train_cfg["runner"]["max_iterations"],
+        num_steps_per_env=train_cfg["runner"]["num_steps_per_env"],
         show_viewer=args.show_viewer,
         device=args.device,
     )

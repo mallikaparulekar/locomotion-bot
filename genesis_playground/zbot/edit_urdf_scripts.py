@@ -33,6 +33,7 @@ def add_gaussian_noise(mass_dict, keys_to_modify, mean=0, std_dev=0.01):
     for key in keys_to_modify:
         if key in noisy_mass_dict and noisy_mass_dict[key] is not None:
             noisy_mass_dict[key] += np.random.normal(mean, std_dev)
+    # print(noisy_mass_dict)
     return noisy_mass_dict
 
 
@@ -57,6 +58,7 @@ def create_multiple_urdfs(original_urdf, new_urdf_prefix, num_urdfs, mean=0, std
     link_masses = extract_link_masses(original_urdf)
     three_largest_masses = get_three_largest_masses(link_masses)
     keys_to_add_noise = [link_name for link_name, _ in three_largest_masses]
+    # print(keys_to_add_noise)
     
     for i in range(num_urdfs):
         noisy_link_masses = add_gaussian_noise(link_masses, keys_to_add_noise, mean, std_dev)
@@ -64,13 +66,14 @@ def create_multiple_urdfs(original_urdf, new_urdf_prefix, num_urdfs, mean=0, std
         update_urdf_masses(original_urdf, new_urdf_file, noisy_link_masses)
 
 
-create_multiple_urdfs(
-    "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed.urdf",
-    "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed_noisy",
-    20,
-    mean=0.05,
-    std_dev=0
-)
+if __name__ == "__main__":
+    create_multiple_urdfs(
+        "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed.urdf",
+        "/Users/mallikaparulekar/Desktop/CS/CS234/Project/genesis_playground/genesis_playground/resources/zbot/robot_fixed_noisy",
+        20,
+        mean=0,
+        std_dev=0.05,
+    )
 
 
 # Example usage:
