@@ -70,46 +70,72 @@ def get_cfgs():
         "num_actions": 10,
         # joint/link names
         # NOTE: hip roll/yaw flipped between sim & real robot FIXME
-        "default_joint_angles": {  # [rad]
-            "R_Hip_Pitch": 0.0,
-            "L_Hip_Pitch": 0.0,
-            "R_Hip_Yaw": 0.0,
-            "L_Hip_Yaw": 0.0,
-            "R_Hip_Roll": 0.0,
-            "L_Hip_Roll": 0.0,
-            "R_Knee_Pitch": 0.0,
-            "L_Knee_Pitch": 0.0,
-            "R_Ankle_Pitch": 0.0,
-            "L_Ankle_Pitch": 0.0,
+        # old
+        # "default_joint_angles": {  # [rad]
+        #     "R_Hip_Pitch": 0.0,
+        #     "L_Hip_Pitch": 0.0,
+        #     "R_Hip_Yaw": 0.0,
+        #     "L_Hip_Yaw": 0.0,
+        #     "R_Hip_Roll": 0.0,
+        #     "L_Hip_Roll": 0.0,
+        #     "R_Knee_Pitch": 0.0,
+        #     "L_Knee_Pitch": 0.0,
+        #     "R_Ankle_Pitch": 0.0,
+        #     "L_Ankle_Pitch": 0.0,
+        # },
+        # "dof_names": [
+        #     "R_Hip_Pitch",
+        #     "L_Hip_Pitch",
+        #     "R_Hip_Yaw",
+        #     "L_Hip_Yaw",
+        #     "R_Hip_Roll",
+        #     "L_Hip_Roll",
+        #     "R_Knee_Pitch",
+        #     "L_Knee_Pitch",
+        #     "R_Ankle_Pitch",
+        #     "L_Ankle_Pitch",
+        # ],
+         #New
+        "default_joint_angles": {
+             "right_hip_pitch": 0.0,
+             "left_hip_pitch": 0.0,
+             "right_hip_yaw": 0.0,
+             "left_hip_yaw": 0.0,
+             "right_hip_roll": 0.0,
+             "left_hip_roll": 0.0,
+             "right_knee": 0.0,
+             "left_knee": 0.0,
+             "right_ankle": 0.0,
+             "left_ankle": 0.0,
         },
         "dof_names": [
-            "R_Hip_Pitch",
-            "L_Hip_Pitch",
-            "R_Hip_Yaw",
-            "L_Hip_Yaw",
-            "R_Hip_Roll",
-            "L_Hip_Roll",
-            "R_Knee_Pitch",
-            "L_Knee_Pitch",
-            "R_Ankle_Pitch",
-            "L_Ankle_Pitch",
-        ],
+             "right_hip_pitch",
+             "left_hip_pitch",
+             "right_hip_yaw",
+             "left_hip_yaw",
+             "right_hip_roll",
+             "left_hip_roll",
+             "right_knee",
+             "left_knee",
+             "right_ankle",
+             "left_ankle",
+         ],
         # friction
         "env_friction_range": {
             "start": [0.9, 1.1],
-            "end": [0.8, 1.2], # Original [0.9, 1.1]
+            "end": [0.9, 1.1], # Original [0.9, 1.1], Other [0.8, 1.2]
         },
         # link mass
         # varying this too much collapses the training (IMPORTANT TO DISCUSS)
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
-            "end": [0.97, 1.03], # Original [1.0, 1.0], Other [0.9, 1.1]
+            "end": [1.0, 1.0], # Original [1.0, 1.0], Other [0.9, 1.1], Other [0.95, 1.05]
         },
         # RFI
         "rfi_scale": 0.1,
         # PD
-        "kp": 20.0,
-        "kd": 0.5,
+        "kp": 17.8, # original 20.0
+        "kd": 0.0, # original 0.5
         "kp_multipliers": [0.75, 1.25],
         "kd_multipliers": [0.75, 1.25],
         # termination
@@ -127,7 +153,7 @@ def get_cfgs():
     }
     obs_cfg = {
         # need to update whenever a minimal policy is used
-        "num_obs": 29, # original 39
+        "num_obs": 36, # original 39
         # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,
@@ -148,6 +174,8 @@ def get_cfgs():
             "action_rate": -0.005,
             "similar_to_default": -0.1,
             "feet_air_time": 5.0,
+            # "lateral_stability": 5.0,  # Penalizes side-to-side movement (Function outputs a negative)
+            # "step_phase_coherence": 1.0,  # Rewards proper alternating gait (new)
         },
     }
     command_cfg = {
@@ -259,7 +287,7 @@ def main():
         run = wandb.init(
                 project=args.wandb_project,  # Use wandb_project instead of exp_name for project
                 entity=args.wandb_entity,
-                name=args.wandb_run_name if args.wandb_run_name else f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",  # Add timestamp to run name
+                name=args.wandb_run_name if args.wandb_run_name else f"{args.exp_name}",  # Get rid of timestamp
                 group=args.exp_name,  # Use exp_name as group name
                 config={
                     "num_envs": args.num_envs,

@@ -84,7 +84,7 @@ class ZbotEnv:
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2), # substep=2 for 50hz
             viewer_options=gs.options.ViewerOptions(
-                res=(1280, 720),  # Set resolution to 1280x720
+                res=(1920, 1080),  # Set resolution to 1280x720
                 max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
@@ -109,7 +109,9 @@ class ZbotEnv:
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="genesis_playground/resources/zbot/robot_fixed.urdf",
+                # Choose correct URDF file
+                # file="genesis_playground/resources/zbot/robot_fixed.urdf",
+                file="genesis_playground/resources/zbot/robot_new.urdf",
                 pos=self.base_init_pos.cpu().numpy(),
                 quat=self.base_init_quat.cpu().numpy(),
             ),
@@ -273,12 +275,12 @@ class ZbotEnv:
         # compute observations
         self.obs_buf = torch.cat(
             [
-                self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                # self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
                 self.projected_gravity,  # 3
                 self.commands * self.commands_scale,  # 3
                 (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 10
                 self.dof_vel * self.obs_scales["dof_vel"],  # 10
-                # self.actions,  # 10
+                self.actions,  # 10
             ],
             axis=-1,
         )
@@ -324,7 +326,7 @@ class ZbotEnv:
             if len(self.reward_history) > 0:
                 self.avg_episode_reward = sum(self.reward_history) / len(self.reward_history)
                 # Print for debugging
-                print(f"Current curriculum mean reward: {self.avg_episode_reward:.4f}, threshold: {self.min_reward_threshold}")
+                # print(f"Current curriculum mean reward: {self.avg_episode_reward:.4f}, threshold: {self.min_reward_threshold}")
         
         # Sample uniform multipliers between min and max
         kp_mult = gs_rand_float(
@@ -357,22 +359,22 @@ class ZbotEnv:
         self.robot.set_dofs_kv(kd_values, self.motor_dofs)
         
         # ORIGINAL CURRICULUM (comment one of these sections)
-        # friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
-        # link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
+        friction = get_from_curriculum(self.env_cfg["env_friction_range"], self.total_steps, self.max_steps)
+        link_mass_mult = get_from_curriculum(self.env_cfg["link_mass_multipliers"], self.total_steps, self.max_steps)
         
         # PERFORMANCE-BASED CURRICULUM (uncomment to use)
-        friction = get_from_curriculum_performance_based(
-            self.env_cfg["env_friction_range"], 
-            self.avg_episode_reward,
-            self.min_reward_threshold,
-            self.target_reward
-        )
-        link_mass_mult = get_from_curriculum_performance_based(
-            self.env_cfg["link_mass_multipliers"], 
-            self.avg_episode_reward,
-            self.min_reward_threshold,
-            self.target_reward
-        )
+        # friction = get_from_curriculum_performance_based(
+        #     self.env_cfg["env_friction_range"], 
+        #     self.avg_episode_reward,
+        #     self.min_reward_threshold,
+        #     self.target_reward
+        # )
+        # link_mass_mult = get_from_curriculum_performance_based(
+        #     self.env_cfg["link_mass_multipliers"], 
+        #     self.avg_episode_reward,
+        #     self.min_reward_threshold,
+        #     self.target_reward
+        # )
         
         # Store current values for logging
         self.current_friction = friction
@@ -489,3 +491,30 @@ class ZbotEnv:
         zero_mask = (cmd_norm <= 0.1)
         reward[zero_mask] = 0.0
         return reward
+    
+    # new reward components designed to improve lateral stability by penalizing lateral movement
+    def _reward_lateral_stability(self):
+        # Penalize lateral movement (high velocity in Y direction)
+        return -torch.square(self.base_lin_vel[:, 1])  # Negative reward for high lateral velocity
+    
+    # new reward components designed to improve step symmetry by encouraging natural left-right leg alternation
+    def _reward_step_phase_coherence(self):
+        """Encourage natural left-right leg alternation, not strict symmetry."""
+        left_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("left_hip_pitch")]
+        right_hip = self.dof_pos[:, self.env_cfg["dof_names"].index("right_hip_pitch")]
+        
+        left_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("left_knee")]
+        right_knee = self.dof_pos[:, self.env_cfg["dof_names"].index("right_knee")]
+
+        # Measure out-of-phase movement (which happens in natural walking)
+        # This yields +1 if the difference is pi, and 0 if the difference is 0
+        # range [0,1] if difference in [0, pi], gentler approach, no negative rewards
+        hip_phase_diff  = 0.5*(1. - torch.cos(left_hip  - right_hip))
+        knee_phase_diff = 0.5*(1. - torch.cos(left_knee - right_knee))
+        return 0.5 * (hip_phase_diff + knee_phase_diff)
+
+
+
+
+
+    
