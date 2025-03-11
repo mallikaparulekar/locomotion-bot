@@ -11,6 +11,7 @@ import pickle
 import shutil
 import wandb
 from datetime import datetime
+from collections import deque
 
 from zbot_env import ZbotEnv
 from rsl_rl.runners import OnPolicyRunner
@@ -167,13 +168,13 @@ def get_cfgs():
         "base_height_target": 0.3,
         "feet_height_target": 0.075,
         "reward_scales": {
-            "tracking_lin_vel": 1.0,
-            "tracking_ang_vel": 0.2,
-            "lin_vel_z": -1.0,
-            "base_height": -50.0,
-            "action_rate": -0.005,
-            "similar_to_default": -0.1,
-            "feet_air_time": 5.0,
+            "tracking_lin_vel": 2.0, # original 1.0 
+            "tracking_ang_vel": 0.2, # original 0.2
+            "lin_vel_z": -1.0, # original -1.0
+            "base_height": -50.0, # original -50.0
+            "action_rate": -0.005, # original -0.005
+            "similar_to_default": -0.1, # original -0.1
+            "feet_air_time": 5.0, # original 5.0
             # "lateral_stability": 5.0,  # Penalizes side-to-side movement (Function outputs a negative)
             # "step_phase_coherence": 1.0,  # Rewards proper alternating gait (new)
         },
@@ -268,6 +269,22 @@ def main():
             shutil.rmtree(log_dir)
         os.makedirs(log_dir, exist_ok=True)
 
+    # Resume training from checkpoint
+    if args.from_checkpoint:
+        exp_log_dir = f"logs/{args.exp_name}"  # Ensure it's per experiment
+        checkpoint_files = [
+            f for f in os.listdir(exp_log_dir) if f.startswith("model_") and f.endswith(".pt")
+        ]
+        
+        if checkpoint_files:
+            latest_checkpoint = max(checkpoint_files, key=lambda f: int(f.split("_")[1].split(".")[0]))
+            train_cfg["runner"]["resume"] = True
+            train_cfg["runner"]["resume_path"] = os.path.join(exp_log_dir, latest_checkpoint)
+            print(f"Resuming training from {train_cfg['runner']['resume_path']}")
+        else:
+            print(f"No checkpoint found for experiment '{args.exp_name}'! Starting training from scratch.")
+
+
     env = ZbotEnv(
         num_envs=args.num_envs, 
         env_cfg=env_cfg, 
@@ -303,6 +320,21 @@ def main():
         runner = WandbOnPolicyRunner(env, train_cfg, log_dir, device=args.device)
     else:
         runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
+    
+    # ✅ Load the latest checkpoint if resuming training
+    if args.from_checkpoint and train_cfg["runner"]["resume_path"] is not None:
+        print(f"Loading model weights from: {train_cfg['runner']['resume_path']}")
+        
+        # ✅ Load checkpoint (model + optimizer + iteration number)
+        infos = runner.load(train_cfg["runner"]["resume_path"])
+        print(f"Checkpoint successfully loaded from {train_cfg['runner']['resume_path']}")
+        
+        # ✅ Restore episode reward and length buffers (to continue logging properly)
+        if infos and "rewbuffer" in infos and "lenbuffer" in infos:
+            runner.rewbuffer = deque(infos["rewbuffer"], maxlen=100)
+            runner.lenbuffer = deque(infos["lenbuffer"], maxlen=100)
+            print("Restored reward and length buffers.")
+
 
     try:
         runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
