@@ -97,13 +97,13 @@ def get_cfgs():
         # friction
         "env_friction_range": {
             "start": [0.9, 1.1],
-            "end": [0.9, 1.1],
+            "end": [0.8, 1.2], # Original [0.9, 1.1]
         },
         # link mass
-        # varying this too much collapses the training
+        # varying this too much collapses the training (IMPORTANT TO DISCUSS)
         "link_mass_multipliers": {
             "start": [1.0, 1.0],
-            "end": [1.0, 1.0],
+            "end": [0.97, 1.03], # Original [1.0, 1.0], Other [0.9, 1.1]
         },
         # RFI
         "rfi_scale": 0.1,
@@ -126,7 +126,8 @@ def get_cfgs():
         "max_torque": 10.0,
     }
     obs_cfg = {
-        "num_obs": 39,
+        # need to update whenever a minimal policy is used
+        "num_obs": 29, # original 39
         # FIXME: IMU mounting orientation is different between sim & real robot
         "obs_scales": {
             "lin_vel": 2.0,
@@ -161,16 +162,58 @@ def get_cfgs():
 class WandbOnPolicyRunner(OnPolicyRunner):
     def log(self, info):
         super().log(info)
-        # Log metrics to wandb
+        
+        # Skip logging if this is just initialization (no training metrics yet)
+        if 'it' not in info or info['it'] == 0:
+            return
+        
+        # Basic metrics that are always available
         metrics = {
-            'train/rew_tracking_lin_vel': info['train/rew_tracking_lin_vel'],
-            'train/rew_tracking_ang_vel': info['train/rew_tracking_ang_vel'],
-            'train/rew_lin_vel_z': info['train/rew_lin_vel_z'],
-            'train/rew_base_height': info['train/rew_base_height'],
-            'train/rew_action_rate': info['train/rew_action_rate'],
-            'train/rew_similar_to_default': info['train/rew_similar_to_default'],
+            'train/iteration': info['it']
         }
+        
+        # Convert deque objects to numpy arrays for mean calculation
+        if 'rewbuffer' in info:
+            if hasattr(info['rewbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_reward'] = info['rewbuffer'].mean().item()
+            else:  # If it's a deque
+                rewards = list(info['rewbuffer'])
+                if rewards:
+                    metrics['train/mean_reward'] = sum(rewards) / len(rewards)
+        
+        if 'lenbuffer' in info:
+            if hasattr(info['lenbuffer'], 'mean'):  # If it's a tensor or similar
+                metrics['train/mean_episode_length'] = info['lenbuffer'].mean().item()
+            else:  # If it's a deque
+                lengths = list(info['lenbuffer'])
+                if lengths:
+                    metrics['train/mean_episode_length'] = sum(lengths) / len(lengths)
+        
+        # Add policy training metrics if available
+        if 'mean_value_loss' in info:
+            metrics['train/value_loss'] = info['mean_value_loss']
+        if 'mean_surrogate_loss' in info:
+            metrics['train/policy_loss'] = info['mean_surrogate_loss']
+            
+        # Add learning rate
+        metrics['train/learning_rate'] = self.alg.learning_rate
+        
+        # Add curriculum metrics if available in extras
+        if hasattr(self.env, 'extras') and 'curriculum' in self.env.extras:
+            curriculum_data = self.env.extras['curriculum']
+            if 'mean_reward' in curriculum_data:
+                metrics['curriculum/mean_reward'] = curriculum_data['mean_reward']
+            if 'current_friction' in curriculum_data:
+                metrics['curriculum/friction'] = curriculum_data['current_friction']
+            if 'current_mass_mult' in curriculum_data:
+                metrics['curriculum/mass_mult'] = curriculum_data['current_mass_mult']
+        
+        # Print and log the metrics
+        print(f"Logging metrics to wandb: {metrics}")
         wandb.log(metrics)
+
+
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -181,6 +224,8 @@ def main():
     parser.add_argument("--show_viewer", type=bool, default=False)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--use_wandb", type=bool, default=False)
+    parser.add_argument("--wandb_project", type=str, default="zbot-walking", help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="WandB run name. If None, will use exp_name")
     parser.add_argument("--from_checkpoint", type=bool, default=False)
     args = parser.parse_args()
     
@@ -212,9 +257,10 @@ def main():
     
     if args.use_wandb:
         run = wandb.init(
-                project=args.exp_name,
+                project=args.wandb_project,  # Use wandb_project instead of exp_name for project
                 entity=args.wandb_entity,
-                name=f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                name=args.wandb_run_name if args.wandb_run_name else f"{args.exp_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",  # Add timestamp to run name
+                group=args.exp_name,  # Use exp_name as group name
                 config={
                     "num_envs": args.num_envs,
                     "max_iterations": args.max_iterations,

@@ -18,7 +18,7 @@ INCREMENT = 0.6
 def init_pygame_window():
     """Initialize a small pygame window so that we can capture keyboard events."""
     pygame.init()
-    screen = pygame.display.set_mode((400, 300))
+    screen = pygame.display.set_mode((300, 400))
     pygame.display.set_caption("Keyboard Control")
     return screen
 
@@ -144,10 +144,15 @@ def main():
 
     obs, _ = env.reset()
 
+    # with torch.no_grad():
+    #     if torch.backends.mps.is_available():
+    #         gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
+    #     else:
+    #         run_sim(env, policy, obs, args.keyboard_control)
     with torch.no_grad():
         gs.tools.run_in_another_thread(run_sim, args=(env, policy, obs, args.keyboard_control))
         if args.show_viewer:
-            env.scene.viewer.start()
+            env.scene.viewer.start()  # Explicit start for viewer 
         
 if __name__ == "__main__":
     main()
