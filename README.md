@@ -13,3 +13,10 @@
 # K-Scale Genesis Playground Library
 
 This repository implements training for robotic control policies in Genesis simulator. For more information, see the [documentation]([https://docs.kscale.dev/simulation/genesis](https://docs.kscale.dev/docs/genesis#/)).
+
+# Command to run training (zbot_train.py)
+python genesis_playground/zbot/zbot_train.py -e experiment-name --num_envs 1024 --wandb_project project-name --use_wandb True 
+
+# Command to run evaluation (zbot_eval.py)
+python genesis_playground/zbot/zbot_eval.py -e experiment-name --ckpt 300 --show_viewer
+
