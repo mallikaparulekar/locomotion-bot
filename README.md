@@ -16,15 +16,17 @@ This repository implements training for robotic control policies in Genesis simu
 
 # ZBot Training and Evaluation Commands
 
-## Running Training
+## Commands to run training and evaluation
 ```sh
+
+# Training
 python genesis_playground/zbot/zbot_train.py \
     -e experiment-name \
     --num_envs 1024 \
     --wandb_project project-name \
     --use_wandb True
 
-## Running Evaluation
+# Evaluation
 python genesis_playground/zbot/zbot_eval.py \
     -e experiment-name \
     --ckpt 300 \
