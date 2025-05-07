@@ -34,6 +34,7 @@ python genesis_playground/zbot/zbot_eval.py \
     --ckpt 300 \
     --show_viewer
 
+```
 
 
 ![Zbot Img 2](zbot_joint_id.png)
