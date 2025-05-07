@@ -10,6 +10,8 @@
 <br />
 </div>
 
+![Zbot Img 1](zbot_img.png)
+
 # K-Scale Genesis Playground Library
 
 This repository implements training for robotic control policies in Genesis simulator. For more information, see the [documentation]([https://docs.kscale.dev/simulation/genesis](https://docs.kscale.dev/docs/genesis#/)).
